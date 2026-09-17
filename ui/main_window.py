@@ -27,14 +27,15 @@ from ui.worker import (
 
 
 class SwitchPromptDialog(QDialog):
-    """Optional quick prompt to carry over a specific session when switching."""
+    """Dialog allowing users to select one or multiple in-progress sessions to copy over when switching accounts."""
 
     def __init__(self, target_account_name: str, available_sessions: list, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Switch Account")
-        self.setFixedSize(480, 260)
+        self.setWindowTitle(f"Switch to {target_account_name}")
+        self.setFixedSize(580, 500)
         self.target_account_name = target_account_name
         self.available_sessions = available_sessions
+        self.session_checkboxes = []
         self._setup_ui()
 
     def _setup_ui(self):
@@ -43,25 +44,87 @@ class SwitchPromptDialog(QDialog):
         layout.setSpacing(14)
 
         title = QLabel(f"Switching to {self.target_account_name}")
-        title.setStyleSheet("font-size: 16px; font-weight: 700; color: #ffffff;")
+        title.setStyleSheet("font-size: 18px; font-weight: 700; color: #ffffff;")
         layout.addWidget(title)
 
         desc = QLabel(
-            "Would you like to carry over a specific in-progress or rate-limited "
-            "session to this account so you can continue working immediately?"
+            f"Select any in-progress or rate-limited sessions to carry over to {self.target_account_name}:"
         )
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: #9ca3af; font-size: 12px;")
+        desc.setStyleSheet("color: #9ca3af; font-size: 13px;")
         layout.addWidget(desc)
 
-        self.session_combo = QComboBox()
-        self.session_combo.addItem("None (Open fresh or keep previous work)", None)
-        for s in self.available_sessions:
-            self.session_combo.addItem(f"{s['title']} ({s['project_name']})", s["session_id"])
-        layout.addWidget(self.session_combo)
+        # Quick selector toolbar
+        quick_bar = QHBoxLayout()
+        quick_bar.setSpacing(8)
 
-        layout.addStretch()
+        select_none_btn = QPushButton("Select None")
+        select_none_btn.setFixedHeight(28)
+        select_none_btn.clicked.connect(self._select_none)
+        quick_bar.addWidget(select_none_btn)
 
+        select_recent_btn = QPushButton("Select Most Recent")
+        select_recent_btn.setFixedHeight(28)
+        select_recent_btn.clicked.connect(self._select_recent)
+        quick_bar.addWidget(select_recent_btn)
+
+        select_all_btn = QPushButton("Select All")
+        select_all_btn.setFixedHeight(28)
+        select_all_btn.clicked.connect(self._select_all)
+        quick_bar.addWidget(select_all_btn)
+
+        quick_bar.addStretch()
+
+        self.count_badge = QLabel("0 sessions selected")
+        self.count_badge.setStyleSheet("color: #f59e0b; font-weight: 600; font-size: 12px;")
+        quick_bar.addWidget(self.count_badge)
+
+        layout.addLayout(quick_bar)
+
+        # Scrollable container for sessions
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: 1px solid #282d3b; border-radius: 8px; background: #13151b; }")
+
+        container = QWidget()
+        self.items_layout = QVBoxLayout(container)
+        self.items_layout.setContentsMargins(8, 8, 8, 8)
+        self.items_layout.setSpacing(6)
+        self.items_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        for sess in self.available_sessions:
+            card = QFrame()
+            card.setStyleSheet(
+                "QFrame { background-color: #1a1e27; border: 1px solid #2d3444; border-radius: 8px; padding: 6px; } "
+                "QFrame:hover { background-color: #212632; border-color: #3b4457; }"
+            )
+            c_layout = QHBoxLayout(card)
+            c_layout.setContentsMargins(8, 6, 8, 6)
+            c_layout.setSpacing(12)
+
+            cb = QCheckBox()
+            cb.stateChanged.connect(self._update_count)
+            c_layout.addWidget(cb)
+            self.session_checkboxes.append((cb, sess["session_id"]))
+
+            info_layout = QVBoxLayout()
+            info_layout.setSpacing(2)
+
+            t_lbl = QLabel(sess["title"])
+            t_lbl.setStyleSheet("font-weight: 700; color: #f3f4f6; font-size: 13px;")
+            info_layout.addWidget(t_lbl)
+
+            sub_lbl = QLabel(f"Project: {sess['project_name']}  •  Turns: {sess['turns']}  •  Active: {sess['last_activity_str']}")
+            sub_lbl.setStyleSheet("color: #9ca3af; font-size: 11px;")
+            info_layout.addWidget(sub_lbl)
+
+            c_layout.addLayout(info_layout, stretch=1)
+            self.items_layout.addWidget(card)
+
+        scroll.setWidget(container)
+        layout.addWidget(scroll)
+
+        # Bottom Actions
         btns = QHBoxLayout()
         btns.addStretch()
 
@@ -69,15 +132,37 @@ class SwitchPromptDialog(QDialog):
         cancel_btn.clicked.connect(self.reject)
         btns.addWidget(cancel_btn)
 
-        switch_btn = QPushButton("Switch Now")
-        switch_btn.setProperty("class", "primary-btn")
-        switch_btn.clicked.connect(self.accept)
-        btns.addWidget(switch_btn)
+        self.switch_btn = QPushButton("Switch Account")
+        self.switch_btn.setProperty("class", "primary-btn")
+        self.switch_btn.clicked.connect(self.accept)
+        btns.addWidget(self.switch_btn)
 
         layout.addLayout(btns)
+        self._update_count()
 
-    def get_selected_session_id(self):
-        return self.session_combo.currentData()
+    def _update_count(self):
+        selected_count = len(self.get_selected_session_ids())
+        self.count_badge.setText(f"{selected_count} session(s) selected")
+        if selected_count > 0:
+            self.switch_btn.setText(f"Switch & Copy ({selected_count})")
+        else:
+            self.switch_btn.setText("Switch (Keep Separate)")
+
+    def _select_all(self):
+        for cb, _ in self.session_checkboxes:
+            cb.setChecked(True)
+
+    def _select_none(self):
+        for cb, _ in self.session_checkboxes:
+            cb.setChecked(False)
+
+    def _select_recent(self):
+        self._select_none()
+        if self.session_checkboxes:
+            self.session_checkboxes[0][0].setChecked(True)
+
+    def get_selected_session_ids(self) -> list:
+        return [sid for cb, sid in self.session_checkboxes if cb and cb.isChecked()]
 
 
 class MainWindow(QMainWindow):
@@ -314,9 +399,9 @@ class MainWindow(QMainWindow):
                 if sessions:
                     dlg = SwitchPromptDialog(target_acc.get("name", "Account"), sessions, self)
                     if dlg.exec() == QDialog.DialogCode.Accepted:
-                        selected_sess = dlg.get_selected_session_id()
-                        if selected_sess:
-                            carry_over_ids.append(selected_sess)
+                        selected_ids = dlg.get_selected_session_ids()
+                        if selected_ids:
+                            carry_over_ids.extend(selected_ids)
                     else:
                         return  # User canceled switch
 

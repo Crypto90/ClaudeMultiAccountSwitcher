@@ -71,6 +71,57 @@ class TestUI(unittest.TestCase):
         w2 = RestartClaudeWorker()
         self.assertIsNotNone(w2)
 
+    def test_switch_prompt_dialog_multi_select(self):
+        from ui.main_window import SwitchPromptDialog
+        sessions = [
+            {
+                "session_id": "sess_1",
+                "title": "Session 1",
+                "project_name": "Project Alpha",
+                "turns": 5,
+                "last_activity_str": "10m ago"
+            },
+            {
+                "session_id": "sess_2",
+                "title": "Session 2",
+                "project_name": "Project Beta",
+                "turns": 12,
+                "last_activity_str": "1h ago"
+            },
+            {
+                "session_id": "sess_3",
+                "title": "Session 3",
+                "project_name": "Project Gamma",
+                "turns": 2,
+                "last_activity_str": "2h ago"
+            }
+        ]
+        dialog = SwitchPromptDialog("Secondary Account", sessions)
+        self.assertEqual(len(dialog.session_checkboxes), 3)
+        self.assertEqual(dialog.get_selected_session_ids(), [])
+        self.assertIn("Keep Separate", dialog.switch_btn.text())
+
+        # Select all
+        dialog._select_all()
+        self.assertEqual(dialog.get_selected_session_ids(), ["sess_1", "sess_2", "sess_3"])
+        self.assertIn("Copy (3)", dialog.switch_btn.text())
+
+        # Select none
+        dialog._select_none()
+        self.assertEqual(dialog.get_selected_session_ids(), [])
+
+        # Select recent
+        dialog._select_recent()
+        self.assertEqual(dialog.get_selected_session_ids(), ["sess_1"])
+
+        # Manual multi-select
+        dialog._select_none()
+        dialog.session_checkboxes[0][0].setChecked(True)
+        dialog.session_checkboxes[2][0].setChecked(True)
+        self.assertEqual(dialog.get_selected_session_ids(), ["sess_1", "sess_3"])
+        self.assertIn("Copy (2)", dialog.switch_btn.text())
+
 
 if __name__ == "__main__":
     unittest.main()
+
