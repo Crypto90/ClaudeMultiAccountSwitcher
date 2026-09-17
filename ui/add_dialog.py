@@ -34,19 +34,19 @@ class AddAccountDialog(QDialog):
         layout.setSpacing(18)
 
         # Title
-        title_label = QLabel("Add New Claude Account")
-        title_label.setStyleSheet("font-size: 18px; font-weight: 700; color: #ffffff;")
+        title_label = QLabel("✦ Add New Claude Account")
+        title_label.setStyleSheet("font-size: 18px; font-weight: 800; color: #ffffff;")
         layout.addWidget(title_label)
 
         # Safety Assurance Box
         safety_box = QFrame()
         safety_box.setStyleSheet(
-            "background-color: #064e3b; border: 1px solid #059669; border-radius: 10px; padding: 12px;"
+            "background-color: rgba(6, 78, 59, 0.4); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 12px; padding: 14px;"
         )
         safety_layout = QVBoxLayout(safety_box)
         safety_layout.setSpacing(4)
 
-        shield_title = QLabel("🛡️ Safe & Protected")
+        shield_title = QLabel("🛡️ Zero Data-Loss Protection")
         shield_title.setStyleSheet("color: #34d399; font-weight: 700; font-size: 13px;")
         safety_layout.addWidget(shield_title)
 
@@ -56,7 +56,7 @@ class AddAccountDialog(QDialog):
             "will automatically capture and register your new profile."
         )
         shield_desc.setWordWrap(True)
-        shield_desc.setStyleSheet("color: #d1fae5; font-size: 12px;")
+        shield_desc.setStyleSheet("color: #cbd5e1; font-size: 12px;")
         safety_layout.addWidget(shield_desc)
 
         layout.addWidget(safety_box)
@@ -65,7 +65,7 @@ class AddAccountDialog(QDialog):
         name_layout = QVBoxLayout()
         name_layout.setSpacing(6)
         name_lbl = QLabel("Account Name / Label:")
-        name_lbl.setStyleSheet("font-weight: 600; color: #f3f4f6;")
+        name_lbl.setStyleSheet("font-weight: 600; color: #f1f5f9;")
         name_layout.addWidget(name_lbl)
 
         self.name_input = QLineEdit()
@@ -75,9 +75,9 @@ class AddAccountDialog(QDialog):
 
         # Color Selector
         color_layout = QVBoxLayout()
-        color_layout.setSpacing(6)
+        color_layout.setSpacing(8)
         color_lbl = QLabel("Avatar Accent Color:")
-        color_lbl.setStyleSheet("font-weight: 600; color: #f3f4f6;")
+        color_lbl.setStyleSheet("font-weight: 600; color: #f1f5f9;")
         color_layout.addWidget(color_lbl)
 
         palette_row = QHBoxLayout()
@@ -86,7 +86,12 @@ class AddAccountDialog(QDialog):
 
         for idx, (hex_code, label) in enumerate(AVATAR_PALETTE):
             btn = QRadioButton(label)
-            btn.setStyleSheet(f"QRadioButton {{ color: #e5e7eb; }} QRadioButton::indicator:checked {{ background-color: {hex_code}; border-color: #ffffff; }}")
+            btn.setStyleSheet(
+                f"QRadioButton {{ color: #e2e8f0; font-weight: 600; font-size: 12px; }} "
+                f"QRadioButton::indicator {{ width: 20px; height: 20px; border-radius: 10px; background-color: {hex_code}; border: 2px solid transparent; }} "
+                f"QRadioButton::indicator:checked {{ border: 2px solid #ffffff; }} "
+                f"QRadioButton::indicator:hover {{ border: 2px solid #94a3b8; }}"
+            )
             if idx == 0:
                 btn.setChecked(True)
             self.color_group.addButton(btn, idx)

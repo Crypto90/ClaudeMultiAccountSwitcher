@@ -84,9 +84,10 @@ class SwitchPromptDialog(QDialog):
         # Scrollable container for sessions
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea { border: 1px solid #282d3b; border-radius: 8px; background: #13151b; }")
+        scroll.setStyleSheet("QScrollArea { border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; background: #0c0f16; }")
 
         container = QWidget()
+        container.setStyleSheet("background: transparent;")
         self.items_layout = QVBoxLayout(container)
         self.items_layout.setContentsMargins(8, 8, 8, 8)
         self.items_layout.setSpacing(6)
@@ -95,8 +96,8 @@ class SwitchPromptDialog(QDialog):
         for sess in self.available_sessions:
             card = QFrame()
             card.setStyleSheet(
-                "QFrame { background-color: #1a1e27; border: 1px solid #2d3444; border-radius: 8px; padding: 6px; } "
-                "QFrame:hover { background-color: #212632; border-color: #3b4457; }"
+                "QFrame { background-color: #11141e; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 6px; } "
+                "QFrame:hover { background-color: #181d2a; border-color: rgba(245, 158, 11, 0.3); }"
             )
             c_layout = QHBoxLayout(card)
             c_layout.setContentsMargins(8, 6, 8, 6)
@@ -115,7 +116,7 @@ class SwitchPromptDialog(QDialog):
             info_layout.addWidget(t_lbl)
 
             sub_lbl = QLabel(f"Project: {sess['project_name']}  •  Turns: {sess['turns']}  •  Active: {sess['last_activity_str']}")
-            sub_lbl.setStyleSheet("color: #9ca3af; font-size: 11px;")
+            sub_lbl.setStyleSheet("color: #94a3b8; font-size: 11px;")
             info_layout.addWidget(sub_lbl)
 
             c_layout.addLayout(info_layout, stretch=1)
@@ -126,7 +127,7 @@ class SwitchPromptDialog(QDialog):
 
         # Mode Selector: Move (Default in all cases) vs Copy
         mode_frame = QFrame()
-        mode_frame.setStyleSheet("QFrame { background: #181b22; border: 1px solid #282d3b; border-radius: 8px; }")
+        mode_frame.setStyleSheet("QFrame { background: #0f121a; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; }")
         mode_layout = QHBoxLayout(mode_frame)
         mode_layout.setContentsMargins(12, 8, 12, 8)
         mode_layout.setSpacing(16)
@@ -229,33 +230,53 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(20, 16, 20, 16)
         main_layout.setSpacing(14)
 
-        # Top Bar: App Title + Status Pill + Actions
+        # Top Bar: Brand Title + Subtitle + Live Status Pill + Actions
         top_bar = QHBoxLayout()
-        top_bar.setSpacing(14)
+        top_bar.setSpacing(16)
 
-        title_lbl = QLabel("✦ Claude Switcher")
-        title_lbl.setStyleSheet("font-size: 20px; font-weight: 800; color: #f59e0b;")
-        top_bar.addWidget(title_lbl)
+        # Branding Block
+        brand_layout = QVBoxLayout()
+        brand_layout.setSpacing(2)
+
+        title_lbl = QLabel("✦ CLAUDE SWITCHER")
+        title_lbl.setStyleSheet(
+            "font-size: 18px; font-weight: 800; color: #f59e0b; letter-spacing: 0.5px;"
+        )
+        brand_layout.addWidget(title_lbl)
+
+        subtitle_lbl = QLabel("Multi-Account & Session Continuity Engine")
+        subtitle_lbl.setStyleSheet(
+            "font-size: 11px; font-weight: 600; color: #a78bfa;"
+        )
+        brand_layout.addWidget(subtitle_lbl)
+
+        top_bar.addLayout(brand_layout)
 
         # Live Claude Status Pill
-        self.status_pill = QLabel("Checking Claude status...")
+        self.status_pill = QLabel("● Checking Claude...")
+        self.status_pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_pill.setMinimumWidth(165)
         self.status_pill.setStyleSheet(
+            "background-color: #171b26; color: #94a3b8; border: 1px solid rgba(255, 255, 255, 0.1); "
             "padding: 5px 12px; border-radius: 12px; font-size: 11px; font-weight: 700;"
         )
         top_bar.addWidget(self.status_pill)
         top_bar.addStretch()
 
         # Action Buttons
-        self.restart_btn = QPushButton("Restart Claude")
+        self.restart_btn = QPushButton("↻ Restart Claude")
+        self.restart_btn.setToolTip("Safely terminate and restart Claude Desktop")
         self.restart_btn.clicked.connect(self._on_restart_claude)
         top_bar.addWidget(self.restart_btn)
 
-        self.backups_btn = QPushButton("Safety & Backups")
+        self.backups_btn = QPushButton("🛡️ Safety & Backups")
+        self.backups_btn.setToolTip("View immutable baseline backup and manage restore points")
         self.backups_btn.clicked.connect(self._open_backups_dialog)
         top_bar.addWidget(self.backups_btn)
 
         self.add_acc_btn = QPushButton("+ Add Account")
         self.add_acc_btn.setProperty("class", "primary-btn")
+        self.add_acc_btn.setToolTip("Register a new Claude account profile")
         self.add_acc_btn.clicked.connect(self._open_add_dialog)
         top_bar.addWidget(self.add_acc_btn)
 
@@ -408,14 +429,14 @@ class MainWindow(QMainWindow):
         if is_running:
             self.status_pill.setText(f"● Claude Running ({count} procs)")
             self.status_pill.setStyleSheet(
-                "background-color: #064e3b; color: #34d399; border: 1px solid #059669; "
-                "padding: 5px 12px; border-radius: 12px; font-size: 11px; font-weight: 700;"
+                "background-color: rgba(6, 78, 59, 0.7); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.5); "
+                "padding: 6px 14px; border-radius: 12px; font-size: 11px; font-weight: 700;"
             )
         else:
             self.status_pill.setText("○ Claude Stopped")
             self.status_pill.setStyleSheet(
-                "background-color: #272115; color: #f59e0b; border: 1px solid #78350f; "
-                "padding: 5px 12px; border-radius: 12px; font-size: 11px; font-weight: 700;"
+                "background-color: rgba(39, 33, 21, 0.7); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); "
+                "padding: 6px 14px; border-radius: 12px; font-size: 11px; font-weight: 700;"
             )
 
     def _handle_switch_account(self, target_account_id: str):

@@ -58,11 +58,30 @@
 - **Directory Traversal Protection**: Deletion methods strictly verify that targeted files reside within `claude-code-sessions` and match valid session naming conventions.
 - **Explorer Integration**: Right-click any session row to immediately open and highlight its JSON file in Windows File Explorer.
 
-### 🎨 5. Windows 11 Fluent Dark UI & System Tray
+### 🎨 5. Obsidian Cyber Aesthetic & System Tray
+- **Cinematic Visuals**: Deep obsidian backdrops (`#090c13`), terracotta amber & cyber violet luminescence, glassmorphic node cards with glowing circular halos, and terminal IDE session tables matching the hero banner aesthetic.
 - **Silky 60+ FPS**: Built with PyQt6 using hardware-accelerated font rendering and background worker threads (`QThread`). Process querying executes in **~14 ms** without ever freezing the UI.
 - **Taskbar System Tray**: Switch accounts directly from the Windows taskbar tray icon next to the system clock.
-- **Profile Customization**: Customize profile display names and pick from vibrant accent colors (Anthropic Terracotta, Violet, Emerald, Cyan, Rose, Blue, Amber, Slate) with live interactive preview.
+- **Profile Customization**: Customize profile display names and pick from vibrant accent colors with live interactive previews and glowing circular avatars.
 - **Shared MCP Configurations**: Optionally synchronize your custom MCP server configurations (`claude_desktop_config.json`) across all accounts automatically.
+
+---
+
+## 🖥️ Interface Preview
+
+<p align="center">
+  <b>Accounts Dashboard</b><br/>
+  <i>Glassmorphic account node cards with luminous active halo rings and live process indicators:</i><br/>
+  <img src="assets/ui_preview_accounts.png" alt="Accounts Dashboard Preview" width="95%" />
+</p>
+
+<br/>
+
+<p align="center">
+  <b>Session Continuity Hub</b><br/>
+  <i>Interactive terminal IDE table for selective session transfer, search, and cleanup:</i><br/>
+  <img src="assets/ui_preview_session_hub.png" alt="Session Continuity Hub Preview" width="95%" />
+</p>
 
 ---
 
@@ -71,7 +90,9 @@
 ```
 ClaudeMultiAccountSwitcher/
 ├── assets/
-│   └── hero_banner.jpg        # High-resolution README hero banner
+│   ├── hero_banner.jpg        # High-resolution README hero banner
+│   ├── ui_preview_accounts.png # Accounts Dashboard preview
+│   └── ui_preview_session_hub.png # Session Continuity Hub preview
 ├── core/
 │   ├── config.py              # Path resolution, settings, exclusion sets
 │   ├── detector.py            # High-speed process detection & lock monitoring

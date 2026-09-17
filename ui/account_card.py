@@ -8,25 +8,32 @@ from PyQt6.QtGui import QColor, QPainter, QBrush, QPen, QFont, QPixmap
 
 
 class AvatarWidget(QLabel):
-    """Circular avatar displaying the account's initial letter (cached as static pixmap)."""
+    """Circular avatar displaying the account's initial letter with glowing outer ring halo (cached as static pixmap)."""
 
     def __init__(self, text: str, bg_color: str = "#d97706", parent=None):
         super().__init__(parent)
-        self.setFixedSize(48, 48)
+        self.setFixedSize(50, 50)
         self.update_avatar(text, bg_color)
 
     def update_avatar(self, text: str, bg_color: str):
-        pixmap = QPixmap(48, 48)
+        pixmap = QPixmap(50, 50)
         pixmap.fill(Qt.GlobalColor.transparent)
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # Draw circle
-        color = QColor(bg_color)
-        painter.setBrush(QBrush(color))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(2, 2, 44, 44)
+        # Draw outer glowing halo ring
+        halo_color = QColor(bg_color)
+        halo_color.setAlpha(60)
+        painter.setPen(QPen(halo_color, 2))
+        painter.setBrush(QBrush(QColor(16, 20, 30)))
+        painter.drawEllipse(1, 1, 48, 48)
+
+        # Draw inner vibrant circle
+        inner_color = QColor(bg_color)
+        painter.setPen(QPen(inner_color.lighter(135), 1.5))
+        painter.setBrush(QBrush(inner_color))
+        painter.drawEllipse(6, 6, 38, 38)
 
         # Draw letter
         letter = (text[0] if text else "C").upper()
@@ -69,7 +76,7 @@ class AccountCard(QFrame):
         main_layout.setContentsMargins(18, 14, 18, 14)
         main_layout.setSpacing(16)
 
-        # Avatar
+        # Avatar with glowing halo
         avatar_color = self.account_data.get("avatar_color", "#d97706")
         self.avatar = AvatarWidget(self.account_data.get("name", "Claude"), bg_color=avatar_color)
         main_layout.addWidget(self.avatar)
@@ -88,11 +95,11 @@ class AccountCard(QFrame):
         top_row.addWidget(name_label)
 
         if self.is_active:
-            active_badge = QLabel("ACTIVE NOW")
-            active_badge.setProperty("class", "badge-active")
+            active_badge = QLabel("● ACTIVE NOW")
             active_badge.setStyleSheet(
-                "background-color: #064e3b; color: #34d399; border: 1px solid #059669; "
-                "border-radius: 9px; padding: 2px 8px; font-size: 10px; font-weight: 800;"
+                "background-color: rgba(16, 185, 129, 0.15); color: #34d399; "
+                "border: 1px solid rgba(16, 185, 129, 0.4); "
+                "border-radius: 9px; padding: 2px 10px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px;"
             )
             top_row.addWidget(active_badge)
 
@@ -105,7 +112,7 @@ class AccountCard(QFrame):
         last_active = self.account_data.get("last_active", "Recently")[:10]
 
         sub_label = QLabel(f"{short_uuid}  •  Last active: {last_active}")
-        sub_label.setStyleSheet("font-size: 12px; color: #9ca3af;")
+        sub_label.setStyleSheet("font-size: 12px; color: #94a3b8;")
         details_layout.addWidget(sub_label)
 
         main_layout.addLayout(details_layout, stretch=1)
@@ -123,8 +130,8 @@ class AccountCard(QFrame):
         else:
             current_pill = QLabel("Current Profile")
             current_pill.setStyleSheet(
-                "color: #f59e0b; font-weight: 600; font-size: 12px; padding: 6px 12px; "
-                "background-color: #272115; border: 1px solid #78350f; border-radius: 8px;"
+                "color: #fbbf24; font-weight: 700; font-size: 11px; padding: 6px 14px; "
+                "background-color: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 8px;"
             )
             actions_layout.addWidget(current_pill)
 
@@ -148,9 +155,9 @@ class AccountCard(QFrame):
     def _show_context_menu(self):
         menu = QMenu(self)
         menu.setStyleSheet(
-            "QMenu { background-color: #1a1d24; border: 1px solid #33394a; border-radius: 8px; padding: 4px; } "
-            "QMenu::item { padding: 8px 20px; color: #f3f4f6; border-radius: 4px; } "
-            "QMenu::item:selected { background-color: #2d3343; color: #f59e0b; }"
+            "QMenu { background-color: #121520; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; padding: 4px; } "
+            "QMenu::item { padding: 8px 20px; color: #f1f5f9; border-radius: 4px; } "
+            "QMenu::item:selected { background-color: #1e2638; color: #fbbf24; }"
         )
 
         edit_action = menu.addAction("Edit Profile (Name & Color)")

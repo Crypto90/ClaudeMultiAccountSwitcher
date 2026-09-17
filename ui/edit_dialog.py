@@ -39,13 +39,21 @@ class LiveAvatarPreview(QLabel):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        color = QColor(self.bg_color)
-        painter.setBrush(QBrush(color))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(2, 2, 60, 60)
+        # Draw outer glowing halo ring
+        halo_color = QColor(self.bg_color)
+        halo_color.setAlpha(60)
+        painter.setPen(QPen(halo_color, 2))
+        painter.setBrush(QBrush(QColor(16, 20, 30)))
+        painter.drawEllipse(1, 1, 62, 62)
+
+        # Draw inner vibrant circle
+        inner_color = QColor(self.bg_color)
+        painter.setPen(QPen(inner_color.lighter(135), 1.5))
+        painter.setBrush(QBrush(inner_color))
+        painter.drawEllipse(7, 7, 50, 50)
 
         painter.setPen(QColor("#ffffff"))
-        font = QFont("Segoe UI", 22, QFont.Weight.Bold)
+        font = QFont("Segoe UI", 20, QFont.Weight.Bold)
         painter.setFont(font)
         painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.text)
 
@@ -72,8 +80,8 @@ class EditAccountDialog(QDialog):
         layout.setSpacing(16)
 
         # Header Title
-        title_lbl = QLabel("Edit Account Profile")
-        title_lbl.setStyleSheet("font-size: 18px; font-weight: 700; color: #ffffff;")
+        title_lbl = QLabel("✦ Edit Account Profile")
+        title_lbl.setStyleSheet("font-size: 18px; font-weight: 800; color: #ffffff;")
         layout.addWidget(title_lbl)
 
         # Avatar Preview Card

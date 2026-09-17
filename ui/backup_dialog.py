@@ -29,8 +29,8 @@ class BackupDialog(QDialog):
         layout.setSpacing(16)
 
         # Title
-        title = QLabel("Safety & Session Backups")
-        title.setStyleSheet("font-size: 18px; font-weight: 700; color: #ffffff;")
+        title = QLabel("✦ Safety & Session Backups")
+        title.setStyleSheet("font-size: 18px; font-weight: 800; color: #ffffff;")
         layout.addWidget(title)
 
         desc = QLabel(
@@ -38,13 +38,13 @@ class BackupDialog(QDialog):
             "Claude logins, subscriptions, or authentication tokens."
         )
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: #9ca3af; font-size: 12px;")
+        desc.setStyleSheet("color: #94a3b8; font-size: 12px;")
         layout.addWidget(desc)
 
         # Baseline Snapshot Card
         baseline_frame = QFrame()
         baseline_frame.setStyleSheet(
-            "background-color: #141f17; border: 1.5px solid #10b981; border-radius: 12px; padding: 14px;"
+            "background-color: rgba(6, 78, 59, 0.25); border: 1.5px solid rgba(16, 185, 129, 0.5); border-radius: 14px; padding: 16px;"
         )
         base_layout = QVBoxLayout(baseline_frame)
         base_layout.setSpacing(6)
@@ -56,8 +56,8 @@ class BackupDialog(QDialog):
 
         status_tag = QLabel("IMMUTABLE")
         status_tag.setStyleSheet(
-            "background-color: #064e3b; color: #6ee7b7; border-radius: 8px; "
-            "padding: 2px 8px; font-size: 10px; font-weight: 800;"
+            "background-color: #064e3b; color: #6ee7b7; border: 1px solid #059669; border-radius: 8px; "
+            "padding: 3px 10px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px;"
         )
         header_row.addWidget(status_tag)
         header_row.addStretch()

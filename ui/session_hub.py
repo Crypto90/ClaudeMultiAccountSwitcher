@@ -135,17 +135,17 @@ class SessionHubWidget(QWidget):
 
         # Header Info Banner
         header_layout = QHBoxLayout()
-        header_title = QLabel("Session Hub")
-        header_title.setStyleSheet("font-size: 18px; font-weight: 700; color: #ffffff;")
+        header_title = QLabel("✦ Session Continuity Hub")
+        header_title.setStyleSheet("font-size: 18px; font-weight: 800; color: #ffffff;")
         header_layout.addWidget(header_title)
 
-        header_sub = QLabel("Select specific sessions to copy or delete across accounts for rate-limit continuity.")
-        header_sub.setStyleSheet("color: #9ca3af; font-size: 13px; margin-left: 8px;")
+        header_sub = QLabel("Select sessions to move, copy, or clean up across accounts for seamless continuity.")
+        header_sub.setStyleSheet("color: #94a3b8; font-size: 12px; margin-left: 8px;")
         header_layout.addWidget(header_sub)
         header_layout.addStretch()
 
-        self.refresh_btn = QPushButton("Refresh")
-        self.refresh_btn.setFixedWidth(90)
+        self.refresh_btn = QPushButton("↻ Refresh")
+        self.refresh_btn.setFixedWidth(95)
         self.refresh_btn.clicked.connect(self.refresh_sessions)
         header_layout.addWidget(self.refresh_btn)
 
@@ -263,6 +263,7 @@ class SessionHubWidget(QWidget):
             # Title
             title_item = QTableWidgetItem(sess["title"])
             title_item.setData(Qt.ItemDataRole.UserRole, sess)
+            title_item.setForeground(QColor("#f1f5f9"))
             title_item.setToolTip(f"{sess['title']}\nSession ID: {sess['session_id']}")
             self.table.setItem(row, 1, title_item)
 
@@ -275,16 +276,19 @@ class SessionHubWidget(QWidget):
 
             # Project
             proj_item = QTableWidgetItem(sess["project_name"])
+            proj_item.setForeground(QColor("#cbd5e1"))
             proj_item.setToolTip(sess.get("cwd", ""))
             self.table.setItem(row, 3, proj_item)
 
             # Turns
             turns_item = QTableWidgetItem(f"{sess['turns']} turns")
             turns_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            turns_item.setForeground(QColor("#a78bfa"))
             self.table.setItem(row, 4, turns_item)
 
             # Last Active
             date_item = QTableWidgetItem(sess["last_activity_str"])
+            date_item.setForeground(QColor("#94a3b8"))
             self.table.setItem(row, 5, date_item)
 
             # Actions Container (Transfer + Delete)
@@ -422,6 +426,11 @@ class SessionHubWidget(QWidget):
             return
 
         menu = QMenu(self)
+        menu.setStyleSheet(
+            "QMenu { background-color: #121520; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; padding: 4px; } "
+            "QMenu::item { padding: 8px 20px; color: #f1f5f9; border-radius: 4px; } "
+            "QMenu::item:selected { background-color: #1e2638; color: #fbbf24; }"
+        )
         transfer_act = menu.addAction("Transfer Session...")
         delete_act = menu.addAction("Delete Session")
         menu.addSeparator()
