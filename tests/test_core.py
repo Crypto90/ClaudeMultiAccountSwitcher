@@ -131,6 +131,42 @@ class TestCoreModules(unittest.TestCase):
         acc_a_sessions = SessionManager.get_sessions_for_account(acc_a, claude_dir=self.mock_claude_dir)
         self.assertEqual(len(acc_a_sessions), 3)
 
+    def test_selective_session_move(self):
+        """Verify that transferring sessions with move=True removes them from the source account."""
+        acc_a = "uuid_move_src"
+        acc_b = "uuid_move_dst"
+        org_id = "org_move"
+
+        sess_dir_a = self.mock_claude_dir / "claude-code-sessions" / acc_a / org_id
+        sess_dir_a.mkdir(parents=True, exist_ok=True)
+
+        session_1 = {
+            "sessionId": "local_move_1",
+            "title": "Move Task",
+            "cwd": "C:/Projects/MoveProj",
+            "createdAt": 1000
+        }
+        (sess_dir_a / "local_move_1.json").write_text(json.dumps(session_1), encoding="utf-8")
+
+        # Move to Account B
+        res = SessionManager.transfer_selected_sessions(
+            session_ids=["local_move_1"],
+            from_account_uuid=acc_a,
+            to_account_uuid=acc_b,
+            move=True,
+            claude_dir=self.mock_claude_dir
+        )
+        self.assertEqual(res["transferred_count"], 1)
+
+        # Verify Account A no longer has the session
+        acc_a_sessions = SessionManager.get_sessions_for_account(acc_a, claude_dir=self.mock_claude_dir)
+        self.assertEqual(len(acc_a_sessions), 0)
+
+        # Verify Account B has the session
+        acc_b_sessions = SessionManager.get_sessions_for_account(acc_b, claude_dir=self.mock_claude_dir)
+        self.assertEqual(len(acc_b_sessions), 1)
+        self.assertEqual(acc_b_sessions[0]["session_id"], "local_move_1")
+
     def test_delete_session(self):
         """Verify deleting a single session removes the JSON file and cleans empty directory."""
         acc_uuid = "uuid_del_test"

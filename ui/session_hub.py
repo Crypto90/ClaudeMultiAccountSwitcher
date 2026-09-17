@@ -80,8 +80,9 @@ class TransferSessionsDialog(QDialog):
         dest_layout.addWidget(self.account_combo)
         layout.addLayout(dest_layout)
 
-        # Transfer mode checkbox
+        # Transfer mode checkbox (Default: Move in all cases)
         self.move_checkbox = QCheckBox("Move session (delete from source account instead of copying)")
+        self.move_checkbox.setChecked(True)
         layout.addWidget(self.move_checkbox)
 
         layout.addStretch()
@@ -481,11 +482,28 @@ class SessionHubWidget(QWidget):
             )
 
             if res["transferred_count"] > 0:
-                QMessageBox.information(
-                    self, "Transfer Complete",
-                    f"Successfully transferred {res['transferred_count']} session(s) to '{dest_acc.get('name')}'.\n"
-                    "You can now switch to that account and continue working!"
-                )
+                verb = "moved" if is_move else "copied"
+                from core.detector import detector
+                if detector.is_claude_running():
+                    reply = QMessageBox.question(
+                        self, "Transfer Complete - Restart Claude",
+                        f"Successfully {verb} {res['transferred_count']} session(s) to '{dest_acc.get('name')}'.\n\n"
+                        "Claude Desktop is currently running. To display the transferred sessions "
+                        "in Claude's left sidebar, Claude Desktop needs a quick restart.\n\n"
+                        "Would you like to restart Claude Desktop now?",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                        QMessageBox.StandardButton.Yes
+                    )
+                    if reply == QMessageBox.StandardButton.Yes:
+                        from ui.worker import RestartClaudeWorker
+                        self._restart_worker = RestartClaudeWorker(parent=self)
+                        self._restart_worker.start()
+                else:
+                    QMessageBox.information(
+                        self, "Transfer Complete",
+                        f"Successfully {verb} {res['transferred_count']} session(s) to '{dest_acc.get('name')}'.\n\n"
+                        "When you start Claude Desktop or switch to that account, your sessions will appear in the sidebar!"
+                    )
                 self.refresh_sessions()
                 self.session_transferred.emit()
             else:

@@ -5,7 +5,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QTabWidget, QScrollArea, QFrame, QMessageBox,
-    QInputDialog, QCheckBox, QDialog, QComboBox
+    QInputDialog, QCheckBox, QDialog, QComboBox, QRadioButton
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QIcon, QCursor
@@ -27,12 +27,12 @@ from ui.worker import (
 
 
 class SwitchPromptDialog(QDialog):
-    """Dialog allowing users to select one or multiple in-progress sessions to copy over when switching accounts."""
+    """Dialog allowing users to select one or multiple in-progress sessions to move or copy over when switching accounts."""
 
     def __init__(self, target_account_name: str, available_sessions: list, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"Switch to {target_account_name}")
-        self.setFixedSize(580, 500)
+        self.setFixedSize(600, 540)
         self.target_account_name = target_account_name
         self.available_sessions = available_sessions
         self.session_checkboxes = []
@@ -48,7 +48,7 @@ class SwitchPromptDialog(QDialog):
         layout.addWidget(title)
 
         desc = QLabel(
-            f"Select any in-progress or rate-limited sessions to carry over to {self.target_account_name}:"
+            f"Select any in-progress or rate-limited sessions to transfer to {self.target_account_name}:"
         )
         desc.setWordWrap(True)
         desc.setStyleSheet("color: #9ca3af; font-size: 13px;")
@@ -124,6 +124,29 @@ class SwitchPromptDialog(QDialog):
         scroll.setWidget(container)
         layout.addWidget(scroll)
 
+        # Mode Selector: Move (Default in all cases) vs Copy
+        mode_frame = QFrame()
+        mode_frame.setStyleSheet("QFrame { background: #181b22; border: 1px solid #282d3b; border-radius: 8px; }")
+        mode_layout = QHBoxLayout(mode_frame)
+        mode_layout.setContentsMargins(12, 8, 12, 8)
+        mode_layout.setSpacing(16)
+
+        mode_lbl = QLabel("Action:")
+        mode_lbl.setStyleSheet("font-weight: 700; color: #f3f4f6; font-size: 12px;")
+        mode_layout.addWidget(mode_lbl)
+
+        self.move_radio = QRadioButton("Move sessions (recommended - remove from current account)")
+        self.move_radio.setChecked(True)  # Default option is MOVE in all cases
+        self.move_radio.toggled.connect(self._update_count)
+        mode_layout.addWidget(self.move_radio)
+
+        self.copy_radio = QRadioButton("Copy sessions (keep in both)")
+        self.copy_radio.toggled.connect(self._update_count)
+        mode_layout.addWidget(self.copy_radio)
+
+        mode_layout.addStretch()
+        layout.addWidget(mode_frame)
+
         # Bottom Actions
         btns = QHBoxLayout()
         btns.addStretch()
@@ -140,11 +163,15 @@ class SwitchPromptDialog(QDialog):
         layout.addLayout(btns)
         self._update_count()
 
+    def is_move_mode(self) -> bool:
+        return self.move_radio.isChecked()
+
     def _update_count(self):
         selected_count = len(self.get_selected_session_ids())
         self.count_badge.setText(f"{selected_count} session(s) selected")
+        verb = "Move" if self.is_move_mode() else "Copy"
         if selected_count > 0:
-            self.switch_btn.setText(f"Switch & Copy ({selected_count})")
+            self.switch_btn.setText(f"Switch & {verb} ({selected_count})")
         else:
             self.switch_btn.setText("Switch (Keep Separate)")
 
@@ -402,6 +429,7 @@ class MainWindow(QMainWindow):
             return
 
         carry_over_ids = []
+        is_move = True
         settings = config.load_settings()
 
         # Check if user wants session carryover
@@ -414,6 +442,7 @@ class MainWindow(QMainWindow):
                     dlg = SwitchPromptDialog(target_acc.get("name", "Account"), sessions, self)
                     if dlg.exec() == QDialog.DialogCode.Accepted:
                         selected_ids = dlg.get_selected_session_ids()
+                        is_move = dlg.is_move_mode()
                         if selected_ids:
                             carry_over_ids.extend(selected_ids)
                     else:
@@ -423,7 +452,12 @@ class MainWindow(QMainWindow):
         self.feedback_label.setText(f"Switching to {target_acc.get('name')} (closing Claude Desktop safely)...")
         self.setCursor(QCursor(Qt.CursorShape.WaitCursor))
 
-        self._switch_worker = SwitchAccountWorker(target_account_id, carry_over_ids, parent=self)
+        self._switch_worker = SwitchAccountWorker(
+            target_account_id,
+            carry_over_ids,
+            move_sessions=is_move,
+            parent=self
+        )
         self._switch_worker.status_changed.connect(lambda msg: self.feedback_label.setText(msg))
 
         def on_switch_done(success: bool, msg: str):

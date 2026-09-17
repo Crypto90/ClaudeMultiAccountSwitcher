@@ -139,6 +139,16 @@ class SessionManager:
                 if existing_orgs:
                     target_org = existing_orgs[0]
 
+        # Fallback to registry if target directory does not exist yet
+        if not target_org:
+            accounts_data = config.load_accounts().get("accounts", {})
+            for acc in accounts_data.values():
+                if acc.get("account_uuid") == to_account_uuid:
+                    orgs = acc.get("org_uuids", [])
+                    if orgs:
+                        target_org = orgs[0]
+                    break
+
         # Scan source sessions matching requested IDs
         all_source_sessions = cls.get_sessions_for_account(from_account_uuid, claude_dir)
         sessions_to_copy = [s for s in all_source_sessions if s["session_id"] in session_ids]
@@ -149,7 +159,7 @@ class SessionManager:
 
         for sess in sessions_to_copy:
             source_file = Path(sess["file_path"])
-            dest_org = target_org or sess["org_uuid"]
+            dest_org = target_org or sess.get("org_uuid")
             dest_dir = target_account_dir / dest_org
             dest_dir.mkdir(parents=True, exist_ok=True)
             dest_file = dest_dir / source_file.name
@@ -157,12 +167,20 @@ class SessionManager:
             try:
                 if move:
                     shutil.move(str(source_file), str(dest_file))
+                    # Clean up source org dir if empty
+                    parent_src = source_file.parent
+                    if parent_src.exists() and not any(parent_src.iterdir()):
+                        try:
+                            parent_src.rmdir()
+                        except Exception:
+                            pass
                 else:
                     shutil.copy2(str(source_file), str(dest_file))
 
                 result["transferred_count"] += 1
                 result["transferred_sessions"].append(sess["title"])
-                logger.info(f"Successfully transferred session '{sess['title']}' to {to_account_uuid}/{dest_org}")
+                verb = "moved" if move else "copied"
+                logger.info(f"Successfully {verb} session '{sess['title']}' to {to_account_uuid}/{dest_org}")
             except Exception as e:
                 err_msg = f"Failed to transfer session {sess['title']}: {e}"
                 logger.error(err_msg)

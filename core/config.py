@@ -24,7 +24,10 @@ EXCLUDED_PROFILE_ITEMS = {
     "Crashpad",
     "logs",
     "lockfile",
-    "blob_storage"
+    "blob_storage",
+    # Persistent session databases (namespaced by account UUID; preserved in-place across switches)
+    "claude-code-sessions",
+    "local-agent-mode-sessions"
 }
 
 # Core session items that MUST be preserved for authentication and session continuity

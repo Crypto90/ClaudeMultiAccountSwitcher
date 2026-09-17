@@ -102,12 +102,23 @@ class TestUI(unittest.TestCase):
         dialog = SwitchPromptDialog("Secondary Account", sessions)
         self.assertEqual(len(dialog.session_checkboxes), 3)
         self.assertEqual(dialog.get_selected_session_ids(), [])
+        self.assertTrue(dialog.is_move_mode())  # Move must be the default in all cases!
         self.assertIn("Keep Separate", dialog.switch_btn.text())
 
-        # Select all
+        # Select all (default mode: Move)
         dialog._select_all()
         self.assertEqual(dialog.get_selected_session_ids(), ["sess_1", "sess_2", "sess_3"])
+        self.assertIn("Move (3)", dialog.switch_btn.text())
+
+        # Switch to Copy mode
+        dialog.copy_radio.setChecked(True)
+        self.assertFalse(dialog.is_move_mode())
         self.assertIn("Copy (3)", dialog.switch_btn.text())
+
+        # Switch back to Move mode
+        dialog.move_radio.setChecked(True)
+        self.assertTrue(dialog.is_move_mode())
+        self.assertIn("Move (3)", dialog.switch_btn.text())
 
         # Select none
         dialog._select_none()
@@ -116,15 +127,17 @@ class TestUI(unittest.TestCase):
         # Select recent
         dialog._select_recent()
         self.assertEqual(dialog.get_selected_session_ids(), ["sess_1"])
+        self.assertIn("Move (1)", dialog.switch_btn.text())
 
         # Manual multi-select
         dialog._select_none()
         dialog.session_checkboxes[0][0].setChecked(True)
         dialog.session_checkboxes[2][0].setChecked(True)
         self.assertEqual(dialog.get_selected_session_ids(), ["sess_1", "sess_3"])
-        self.assertIn("Copy (2)", dialog.switch_btn.text())
+        self.assertIn("Move (2)", dialog.switch_btn.text())
 
 
 if __name__ == "__main__":
     unittest.main()
+
 

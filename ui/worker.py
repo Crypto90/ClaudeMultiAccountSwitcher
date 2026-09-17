@@ -20,11 +20,13 @@ class SwitchAccountWorker(QThread):
         self,
         target_account_id: str,
         carry_over_session_ids: Optional[List[str]] = None,
+        move_sessions: bool = True,
         parent=None
     ):
         super().__init__(parent)
         self.target_account_id = target_account_id
         self.carry_over_session_ids = carry_over_session_ids
+        self.move_sessions = move_sessions
 
     def run(self):
         try:
@@ -33,6 +35,7 @@ class SwitchAccountWorker(QThread):
             success = profile_manager.switch_account(
                 self.target_account_id,
                 carry_over_session_ids=self.carry_over_session_ids,
+                move_sessions=self.move_sessions,
                 restart_claude=True
             )
             if success:

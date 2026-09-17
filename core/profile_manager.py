@@ -158,12 +158,13 @@ class ProfileManager:
         self,
         target_account_id: str,
         carry_over_session_ids: Optional[List[str]] = None,
+        move_sessions: bool = True,
         restart_claude: bool = True
     ) -> bool:
         """
         Switch from current active account to target account.
-        Selectively carries over chosen sessions if requested.
-        Preserves 12 GB vm_bundles and binaries untouched.
+        Selectively moves or copies chosen sessions (defaults to move).
+        Preserves 12 GB vm_bundles, session databases, and binaries untouched.
         """
         accounts = self.config.load_accounts()
         if target_account_id not in accounts["accounts"]:
@@ -178,22 +179,23 @@ class ProfileManager:
 
         was_running = self.detector.is_claude_running()
 
-        # Step 1: Transfer specific selected sessions if requested
+        # Step 1: Gracefully close Claude Desktop FIRST to flush open files and unlock databases
+        if was_running or self.detector.is_claude_running():
+            self.process_manager.close_claude()
+            time.sleep(0.5)
+
+        # Step 2: Move or copy specific selected sessions if requested
         if carry_over_session_ids and source_acc_id:
             src_acc = accounts["accounts"].get(source_acc_id, {})
             dst_acc = accounts["accounts"].get(target_account_id, {})
             src_uuid = src_acc.get("account_uuid")
             dst_uuid = dst_acc.get("account_uuid")
             if src_uuid and dst_uuid:
-                logger.info(f"Carrying over {len(carry_over_session_ids)} sessions from {src_uuid} to {dst_uuid}")
+                verb = "Moving" if move_sessions else "Copying"
+                logger.info(f"{verb} {len(carry_over_session_ids)} sessions from {src_uuid} to {dst_uuid}")
                 self.session_manager.transfer_selected_sessions(
-                    carry_over_session_ids, src_uuid, dst_uuid, claude_dir=claude_dir
+                    carry_over_session_ids, src_uuid, dst_uuid, move=move_sessions, claude_dir=claude_dir
                 )
-
-        # Step 2: Gracefully close Claude Desktop FIRST to unlock SQLite and LevelDB files
-        if was_running or self.detector.is_claude_running():
-            self.process_manager.close_claude()
-            time.sleep(0.5)
 
         # Step 3: Save any updated session state of the current account ONLY if authenticated!
         if source_acc_id and source_acc_id in accounts["accounts"]:
