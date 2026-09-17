@@ -122,12 +122,28 @@ class ProfileManager:
             return False
 
         claude_dir = self.config.get_claude_profile_dir()
+        session_info = self.detector.get_active_session_info(claude_dir)
+        target_acc = accounts["accounts"][active_id]
+
+        # CRITICAL SAFETY CHECK:
+        # Never overwrite an existing signed-in profile with a logged-out or unauthenticated session!
+        if not session_info.get("is_signed_in") and not session_info.get("has_tokens"):
+            if target_acc.get("account_uuid"):
+                logger.warning(
+                    f"Refusing to overwrite signed-in profile '{target_acc.get('name')}' with unauthenticated session."
+                )
+                return False
+
+        # Ensure Claude Desktop is closed to release SQLite Cookies and LevelDB locks
+        if self.detector.is_claude_running():
+            self.process_manager.close_claude()
+            time.sleep(0.5)
+
         profile_dir = self.config.profiles_dir / active_id
         profile_dir.mkdir(parents=True, exist_ok=True)
 
         self.copy_session_payload(claude_dir, profile_dir)
 
-        session_info = self.detector.get_active_session_info(claude_dir)
         acc = accounts["accounts"][active_id]
         acc["last_active"] = datetime.now().isoformat()
         if session_info.get("account_uuid"):
@@ -174,15 +190,23 @@ class ProfileManager:
                     carry_over_session_ids, src_uuid, dst_uuid, claude_dir=claude_dir
                 )
 
-        # Step 2: Gracefully close Claude Desktop to release file locks
-        if was_running:
+        # Step 2: Gracefully close Claude Desktop FIRST to unlock SQLite and LevelDB files
+        if was_running or self.detector.is_claude_running():
             self.process_manager.close_claude()
             time.sleep(0.5)
 
-        # Step 3: Save any updated session state of the current account
+        # Step 3: Save any updated session state of the current account ONLY if authenticated!
         if source_acc_id and source_acc_id in accounts["accounts"]:
-            src_profile_dir = self.config.profiles_dir / source_acc_id
-            self.copy_session_payload(claude_dir, src_profile_dir)
+            session_info = self.detector.get_active_session_info(claude_dir)
+            source_acc = accounts["accounts"][source_acc_id]
+            if session_info.get("is_signed_in") and session_info.get("has_tokens"):
+                src_profile_dir = self.config.profiles_dir / source_acc_id
+                self.copy_session_payload(claude_dir, src_profile_dir)
+                source_acc["last_active"] = datetime.now().isoformat()
+                if session_info.get("account_uuid"):
+                    source_acc["account_uuid"] = session_info["account_uuid"]
+            else:
+                logger.info(f"Skipping save of '{source_acc.get('name')}' as active session is not authenticated.")
 
         # Step 4: Clean current session files from active directory (keeping vm_bundles / claude-code intact)
         for item in claude_dir.iterdir():
@@ -232,17 +256,18 @@ class ProfileManager:
         claude_dir = self.config.get_claude_profile_dir()
         accounts = self.config.load_accounts()
 
-        # Step 1: Save current active account
+        # Step 1: Close Claude Desktop FIRST so files are unlocked and consistent
+        if self.detector.is_claude_running():
+            self.process_manager.close_claude()
+            time.sleep(0.5)
+
+        # Step 2: Now that Claude is closed, safely save current active account
         self.save_current_profile()
 
         # Generate new account ID
         new_id = f"account_{int(time.time())}"
         new_profile_dir = self.config.profiles_dir / new_id
         new_profile_dir.mkdir(parents=True, exist_ok=True)
-
-        # Step 2: Close Claude Desktop
-        self.process_manager.close_claude()
-        time.sleep(0.5)
 
         # Preserve MCP config if requested
         mcp_content = None

@@ -97,11 +97,11 @@ class ProcessManager:
     def launch_claude() -> bool:
         """Launch Claude Desktop using the registered Windows Appx protocol or direct path."""
         try:
-            # Primary launch: via Windows Shell App execution (handles MSIX full trust container)
+            # Primary launch: via PowerShell Start-Process with shell URI (100% reliable for WindowsApps MSIX)
             app_uri = "shell:AppsFolder\\Claude_pzs8sxrjxfjjc!Claude"
-            logger.info(f"Launching Claude via {app_uri}")
+            logger.info(f"Launching Claude via Start-Process {app_uri}")
             subprocess.Popen(
-                ["explorer.exe", app_uri],
+                ["powershell", "-NoProfile", "-Command", f"Start-Process '{app_uri}'"],
                 creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
             )
             return True
