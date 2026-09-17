@@ -234,7 +234,56 @@ class TestCoreModules(unittest.TestCase):
         self.assertFalse(success)
         self.assertTrue(config_path.exists())
 
+    def test_launch_claude_verified(self):
+        """Verify ProcessManager.launch_claude launches and verifies Claude process presence."""
+        from unittest.mock import patch
+        from core.process_manager import ProcessManager
+
+        with patch("os.startfile") as mock_startfile, \
+             patch("core.detector.ClaudeDetector.is_claude_running", return_value=True), \
+             patch("core.detector.ClaudeDetector.get_claude_process_count", return_value=4):
+            result = ProcessManager.launch_claude(timeout_sec=1.0)
+            self.assertTrue(result)
+            mock_startfile.assert_called_once()
+
+    def test_switch_account_restarts_claude_with_status_callback(self):
+        """Verify ProfileManager.switch_account restarts Claude and provides real-time status updates."""
+        from unittest.mock import patch, MagicMock
+        from core.profile_manager import ProfileManager
+
+        pm = ProfileManager()
+        pm.config = self.config
+
+        # Setup registry with 2 accounts
+        self.config.save_accounts({
+            "active_account_id": "acc_1",
+            "accounts": {
+                "acc_1": {"name": "Account One", "account_uuid": "u1"},
+                "acc_2": {"name": "Account Two", "account_uuid": "u2"}
+            }
+        })
+        # Create target profile directory
+        target_dir = self.config.profiles_dir / "acc_2"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        (target_dir / "config.json").write_text('{"lastKnownAccountUuid": "u2"}', encoding="utf-8")
+
+        statuses = []
+        with patch.object(pm.process_manager, "close_claude") as mock_close, \
+             patch.object(pm.process_manager, "launch_claude", return_value=True) as mock_launch, \
+             patch.object(pm.detector, "is_claude_running", return_value=False), \
+             patch.object(self.config, "get_claude_profile_dir", return_value=self.mock_claude_dir):
+            success = pm.switch_account(
+                "acc_2",
+                restart_claude=True,
+                status_callback=lambda s: statuses.append(s)
+            )
+            self.assertTrue(success)
+            mock_launch.assert_called_once()
+            self.assertTrue(any("Starting Claude Desktop" in s for s in statuses))
+            self.assertEqual(self.config.load_accounts()["active_account_id"], "acc_2")
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

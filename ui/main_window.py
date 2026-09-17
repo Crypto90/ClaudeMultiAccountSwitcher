@@ -463,12 +463,12 @@ class MainWindow(QMainWindow):
         def on_switch_done(success: bool, msg: str):
             self.unsetCursor()
             if success:
-                self.feedback_label.setText(f"Active account is now: {target_acc.get('name')}")
+                self.feedback_label.setText(f"Active account: {target_acc.get('name')} (Claude Desktop restarted)")
                 self.refresh_accounts_list()
                 self.session_hub.refresh_sessions()
                 self.tray_icon.showMessage(
                     "Account Switched",
-                    f"Now active: {target_acc.get('name')}. Claude Desktop is ready.",
+                    f"Now active: {target_acc.get('name')}. Claude Desktop restarted and ready.",
                     QIcon(create_tray_pixmap())
                 )
             else:

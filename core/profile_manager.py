@@ -6,7 +6,7 @@ import json
 import shutil
 import logging
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Callable
 from datetime import datetime
 
 from core.config import config, EXCLUDED_PROFILE_ITEMS, SESSION_ITEMS
@@ -159,18 +159,21 @@ class ProfileManager:
         target_account_id: str,
         carry_over_session_ids: Optional[List[str]] = None,
         move_sessions: bool = True,
-        restart_claude: bool = True
+        restart_claude: bool = True,
+        status_callback: Optional[Callable[[str], None]] = None
     ) -> bool:
         """
         Switch from current active account to target account.
         Selectively moves or copies chosen sessions (defaults to move).
         Preserves 12 GB vm_bundles, session databases, and binaries untouched.
+        Guarantees that Claude Desktop is cleanly restarted and running afterwards.
         """
         accounts = self.config.load_accounts()
         if target_account_id not in accounts["accounts"]:
             raise ValueError(f"Target account not found: {target_account_id}")
 
         source_acc_id = accounts.get("active_account_id")
+        target_acc_name = accounts["accounts"][target_account_id].get("name", "Target Account")
         claude_dir = self.config.get_claude_profile_dir()
         target_profile_dir = self.config.profiles_dir / target_account_id
 
@@ -181,6 +184,8 @@ class ProfileManager:
 
         # Step 1: Gracefully close Claude Desktop FIRST to flush open files and unlock databases
         if was_running or self.detector.is_claude_running():
+            if status_callback:
+                status_callback("Closing Claude Desktop safely...")
             self.process_manager.close_claude()
             time.sleep(0.5)
 
@@ -192,6 +197,8 @@ class ProfileManager:
             dst_uuid = dst_acc.get("account_uuid")
             if src_uuid and dst_uuid:
                 verb = "Moving" if move_sessions else "Copying"
+                if status_callback:
+                    status_callback(f"{verb} {len(carry_over_session_ids)} sessions...")
                 logger.info(f"{verb} {len(carry_over_session_ids)} sessions from {src_uuid} to {dst_uuid}")
                 self.session_manager.transfer_selected_sessions(
                     carry_over_session_ids, src_uuid, dst_uuid, move=move_sessions, claude_dir=claude_dir
@@ -199,6 +206,8 @@ class ProfileManager:
 
         # Step 3: Save any updated session state of the current account ONLY if authenticated!
         if source_acc_id and source_acc_id in accounts["accounts"]:
+            if status_callback:
+                status_callback("Saving current profile snapshot...")
             session_info = self.detector.get_active_session_info(claude_dir)
             source_acc = accounts["accounts"][source_acc_id]
             if session_info.get("is_signed_in") and session_info.get("has_tokens"):
@@ -211,6 +220,8 @@ class ProfileManager:
                 logger.info(f"Skipping save of '{source_acc.get('name')}' as active session is not authenticated.")
 
         # Step 4: Clean current session files from active directory (keeping vm_bundles / claude-code intact)
+        if status_callback:
+            status_callback(f"Activating profile for {target_acc_name}...")
         for item in claude_dir.iterdir():
             if item.name in EXCLUDED_PROFILE_ITEMS or item.name == "claude_desktop_config.json":
                 # Keep shared MCP config if enabled in settings
@@ -234,9 +245,16 @@ class ProfileManager:
         accounts["accounts"][target_account_id]["last_active"] = datetime.now().isoformat()
         self.config.save_accounts(accounts)
 
-        # Step 7: Re-launch Claude Desktop
+        # Step 7: Re-launch Claude Desktop and verify it started
         if restart_claude:
-            self.process_manager.launch_claude()
+            if status_callback:
+                status_callback("Starting Claude Desktop...")
+            logger.info("Starting Claude Desktop post-switch...")
+            launched = self.process_manager.launch_claude()
+            if not launched:
+                logger.warning("Claude Desktop launch could not be confirmed running.")
+            else:
+                logger.info("Claude Desktop launched and running.")
 
         logger.info(f"Switched successfully to account: {accounts['accounts'][target_account_id]['name']}")
         return True

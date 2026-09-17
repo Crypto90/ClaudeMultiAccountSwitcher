@@ -31,15 +31,16 @@ class SwitchAccountWorker(QThread):
     def run(self):
         try:
             self.status_changed.emit("Closing Claude Desktop safely...")
-            # Execute switch in background thread
+            # Execute switch in background thread with real-time status updates
             success = profile_manager.switch_account(
                 self.target_account_id,
                 carry_over_session_ids=self.carry_over_session_ids,
                 move_sessions=self.move_sessions,
-                restart_claude=True
+                restart_claude=True,
+                status_callback=lambda msg: self.status_changed.emit(msg)
             )
             if success:
-                self.finished.emit(True, "Account switched successfully!")
+                self.finished.emit(True, "Account switched and Claude Desktop started!")
             else:
                 self.finished.emit(False, "Failed to switch account.")
         except Exception as e:

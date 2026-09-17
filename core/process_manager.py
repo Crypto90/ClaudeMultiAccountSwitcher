@@ -93,34 +93,65 @@ class ProcessManager:
 
         return not detector.is_claude_running()
 
-    @staticmethod
-    def launch_claude() -> bool:
-        """Launch Claude Desktop using the registered Windows Appx protocol or direct path."""
-        try:
-            # Primary launch: via PowerShell Start-Process with shell URI (100% reliable for WindowsApps MSIX)
-            app_uri = "shell:AppsFolder\\Claude_pzs8sxrjxfjjc!Claude"
-            logger.info(f"Launching Claude via Start-Process {app_uri}")
-            subprocess.Popen(
-                ["powershell", "-NoProfile", "-Command", f"Start-Process '{app_uri}'"],
-                creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-            )
-            return True
-        except Exception as e:
-            logger.warning(f"Shell launch failed: {e}. Attempting direct executable launch...")
-
-        # Fallback to direct executable if package identity launch fails
+    @classmethod
+    def launch_claude(cls, timeout_sec: float = 4.0) -> bool:
+        """
+        Launch Claude Desktop using native Windows ShellExecute (os.startfile).
+        Falls back to explorer.exe shell URI or direct executable, and verifies
+        that Claude processes are actively running before returning.
+        """
+        app_uri = "shell:AppsFolder\\Claude_pzs8sxrjxfjjc!Claude"
         direct_exe = r"C:\Program Files\WindowsApps\Claude_2.110.1.0_x64__pzs8sxrjxfjjc\app\claude.exe"
-        if os.path.exists(direct_exe):
-            try:
-                subprocess.Popen(
-                    [direct_exe],
-                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-                )
-                return True
-            except Exception as ex:
-                logger.error(f"Direct executable launch failed: {ex}")
 
-        return False
+        # Step 1: Native Windows ShellExecute via os.startfile (fastest and most reliable on Windows 11)
+        launched = False
+        try:
+            logger.info(f"Launching Claude Desktop via os.startfile('{app_uri}')")
+            os.startfile(app_uri)
+            launched = True
+        except Exception as e:
+            logger.warning(f"os.startfile failed: {e}. Attempting explorer.exe fallback...")
+
+        # Step 2: Fallback via explorer.exe shell invocation
+        if not launched:
+            try:
+                subprocess.Popen(["explorer.exe", app_uri])
+                launched = True
+            except Exception as e:
+                logger.warning(f"explorer.exe launch failed: {e}. Attempting direct executable...")
+
+        # Step 3: Direct executable fallback if needed
+        if not launched and os.path.exists(direct_exe):
+            try:
+                subprocess.Popen([direct_exe])
+                launched = True
+            except Exception as e:
+                logger.error(f"Direct executable launch failed: {e}")
+
+        # Step 4: Verification loop — confirm Claude Desktop has started
+        start_time = time.time()
+        while time.time() - start_time < timeout_sec:
+            if detector.is_claude_running():
+                proc_count = detector.get_claude_process_count()
+                logger.info(f"Claude Desktop successfully started and running ({proc_count} processes).")
+                return True
+            time.sleep(0.25)
+
+        # Final check & direct executable rescue if shell launch was delayed
+        if not detector.is_claude_running() and os.path.exists(direct_exe):
+            try:
+                logger.info("Claude not detected within timeout, launching direct executable fallback...")
+                subprocess.Popen([direct_exe])
+                time.sleep(1.0)
+            except Exception as ex:
+                logger.error(f"Rescue launch failed: {ex}")
+
+        is_running = detector.is_claude_running()
+        if is_running:
+            logger.info("Claude Desktop confirmed running.")
+        else:
+            logger.error("Claude Desktop launch failed to produce active processes.")
+        return is_running
 
     @classmethod
     def restart_claude(cls) -> bool:
