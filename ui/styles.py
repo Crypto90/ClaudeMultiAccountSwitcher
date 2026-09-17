@@ -9,10 +9,6 @@ QMainWindow, QDialog {
     font-size: 13px;
 }
 
-QWidget {
-    font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
-    color: #f3f4f6;
-}
 
 /* Tooltips */
 QToolTip {

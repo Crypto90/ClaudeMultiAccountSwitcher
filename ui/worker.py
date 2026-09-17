@@ -87,3 +87,40 @@ class CreateAccountWorker(QThread):
         except Exception as e:
             logger.error(f"CreateAccountWorker exception: {e}")
             self.finished.emit(False, "", str(e))
+
+
+class StatusMonitorThread(QThread):
+    """Background daemon thread to monitor Claude process state without touching the GUI thread."""
+
+    status_updated = pyqtSignal(bool, int)  # (is_running, count)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._running = True
+
+    def run(self):
+        from core.detector import detector
+        import time
+
+        last_state = None
+        last_count = -1
+        while self._running:
+            try:
+                count = detector.get_claude_process_count()
+                is_running = count > 0
+                if is_running != last_state or count != last_count:
+                    last_state = is_running
+                    last_count = count
+                    self.status_updated.emit(is_running, count)
+            except Exception:
+                pass
+
+            # Sleep in background thread for 3.5s
+            for _ in range(35):
+                if not self._running:
+                    break
+                time.sleep(0.1)
+
+    def stop(self):
+        self._running = False
+        self.wait(1000)

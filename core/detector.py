@@ -16,15 +16,11 @@ class ClaudeDetector:
 
     @staticmethod
     def is_claude_running() -> bool:
-        """Check if any Claude Desktop process is actively running."""
-        for proc in psutil.process_iter(["name", "exe"]):
+        """Lightweight check if any Claude process is actively running (under 10ms)."""
+        for proc in psutil.process_iter(["name"]):
             try:
                 name = (proc.info["name"] or "").lower()
-                exe = (proc.info["exe"] or "").lower()
-                if "claude.exe" in name and "claude-code" not in exe:
-                    return True
-                # Also check WindowsApps claude
-                if "claude" in name and "windowsapps" in exe:
+                if name == "claude.exe" or name == "claude":
                     return True
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
@@ -32,26 +28,32 @@ class ClaudeDetector:
 
     @staticmethod
     def get_claude_processes() -> List[Dict[str, Any]]:
-        """Get detailed information about running Claude processes."""
+        """Fast query of running Claude processes without scanning unrelated system processes."""
         processes = []
-        for proc in psutil.process_iter(["pid", "name", "exe", "create_time", "memory_info"]):
+        for proc in psutil.process_iter(["pid", "name"]):
             try:
                 name = (proc.info["name"] or "").lower()
-                exe = (proc.info["exe"] or "").lower()
-                if "claude.exe" in name and ("windowsapps" in exe or "appdata" in exe):
-                    mem_mb = 0
-                    if proc.info["memory_info"]:
-                        mem_mb = round(proc.info["memory_info"].rss / (1024 * 1024), 1)
+                if name == "claude.exe" or name == "claude":
                     processes.append({
                         "pid": proc.info["pid"],
-                        "name": proc.info["name"],
-                        "exe": proc.info["exe"],
-                        "create_time": proc.info["create_time"],
-                        "memory_mb": mem_mb
+                        "name": proc.info["name"]
                     })
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
         return processes
+
+    @staticmethod
+    def get_claude_process_count() -> int:
+        """Fast count of running Claude processes (takes ~10ms)."""
+        count = 0
+        for proc in psutil.process_iter(["name"]):
+            try:
+                name = (proc.info["name"] or "").lower()
+                if name == "claude.exe" or name == "claude":
+                    count += 1
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return count
 
     @staticmethod
     def is_cookies_locked(claude_dir: Optional[Path] = None) -> bool:

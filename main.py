@@ -10,6 +10,8 @@ from core.config import config
 from core.profile_manager import profile_manager
 from ui.styles import FLUENT_DARK_QSS
 
+from PyQt6.QtGui import QFont
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -69,6 +71,11 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("Claude Multi-Account Switcher")
+
+    app_font = QFont("Segoe UI Variable Text", 10)
+    app_font.setStyleHint(QFont.StyleHint.SansSerif)
+    app.setFont(app_font)
+
     app.setStyleSheet(FLUENT_DARK_QSS)
 
     from ui.main_window import MainWindow

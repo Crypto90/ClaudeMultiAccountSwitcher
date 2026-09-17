@@ -4,33 +4,39 @@ from PyQt6.QtWidgets import (
     QFrame, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QMenu
 )
 from PyQt6.QtCore import pyqtSignal, Qt
-from PyQt6.QtGui import QColor, QPainter, QBrush, QPen, QFont
+from PyQt6.QtGui import QColor, QPainter, QBrush, QPen, QFont, QPixmap
 
 
 class AvatarWidget(QLabel):
-    """Circular avatar displaying the account's initial letter."""
+    """Circular avatar displaying the account's initial letter (cached as static pixmap)."""
 
     def __init__(self, text: str, bg_color: str = "#d97706", parent=None):
         super().__init__(parent)
-        self.text = (text[0] if text else "C").upper()
-        self.bg_color = bg_color
         self.setFixedSize(48, 48)
+        self.update_avatar(text, bg_color)
 
-    def paintEvent(self, event):
-        painter = QPainter(self)
+    def update_avatar(self, text: str, bg_color: str):
+        pixmap = QPixmap(48, 48)
+        pixmap.fill(Qt.GlobalColor.transparent)
+
+        painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         # Draw circle
-        color = QColor(self.bg_color)
+        color = QColor(bg_color)
         painter.setBrush(QBrush(color))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawEllipse(2, 2, 44, 44)
 
         # Draw letter
+        letter = (text[0] if text else "C").upper()
         painter.setPen(QColor("#ffffff"))
         font = QFont("Segoe UI", 16, QFont.Weight.Bold)
         painter.setFont(font)
-        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.text)
+        painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, letter)
+        painter.end()
+
+        self.setPixmap(pixmap)
 
 
 class AccountCard(QFrame):

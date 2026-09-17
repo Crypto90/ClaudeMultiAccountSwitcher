@@ -21,7 +21,9 @@ from ui.add_dialog import AddAccountDialog
 from ui.edit_dialog import EditAccountDialog
 from ui.backup_dialog import BackupDialog
 from ui.tray_icon import ClaudeTrayIcon, create_tray_pixmap
-from ui.worker import SwitchAccountWorker, RestartClaudeWorker, CreateAccountWorker
+from ui.worker import (
+    SwitchAccountWorker, RestartClaudeWorker, CreateAccountWorker, StatusMonitorThread
+)
 
 
 class SwitchPromptDialog(QDialog):
@@ -98,11 +100,10 @@ class MainWindow(QMainWindow):
 
         self._setup_ui()
 
-        # Live Claude process monitor timer (every 2.5s)
-        self.monitor_timer = QTimer(self)
-        self.monitor_timer.timeout.connect(self._update_claude_status)
-        self.monitor_timer.start(2500)
-        self._update_claude_status()
+        # Non-blocking background status monitor thread (zero CPU on GUI thread)
+        self.status_monitor = StatusMonitorThread(self)
+        self.status_monitor.status_updated.connect(self._update_claude_status_from_worker)
+        self.status_monitor.start()
 
         # Pending login watcher timer
         self.pending_watcher = QTimer(self)
@@ -277,11 +278,9 @@ class MainWindow(QMainWindow):
         config.save_settings(settings)
         self.feedback_label.setText("Settings saved successfully.")
 
-    def _update_claude_status(self):
-        procs = detector.get_claude_processes()
-        if procs:
-            total_mem = sum(p["memory_mb"] for p in procs)
-            self.status_pill.setText(f"● Claude Running ({len(procs)} procs, {total_mem:.0f} MB)")
+    def _update_claude_status_from_worker(self, is_running: bool, count: int):
+        if is_running:
+            self.status_pill.setText(f"● Claude Running ({count} procs)")
             self.status_pill.setStyleSheet(
                 "background-color: #064e3b; color: #34d399; border: 1px solid #059669; "
                 "padding: 5px 12px; border-radius: 12px; font-size: 11px; font-weight: 700;"
