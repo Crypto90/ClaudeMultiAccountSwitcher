@@ -1,9 +1,11 @@
-"""Session Hub: Interactive, selective session browser and cross-account transfer."""
+"""Session Hub: Interactive, selective session browser, cross-account transfer, and session deletion."""
 
+import os
+import subprocess
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
     QTableWidget, QTableWidgetItem, QHeaderView, QComboBox, QCheckBox,
-    QDialog, QMessageBox, QFrame, QAbstractItemView
+    QDialog, QMessageBox, QFrame, QAbstractItemView, QMenu
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QCursor
@@ -106,15 +108,24 @@ class TransferSessionsDialog(QDialog):
 
 
 class SessionHubWidget(QWidget):
-    """Widget allowing granular search, selective filtering, and 1-click cross-account session transfer."""
+    """Widget allowing granular search, selective filtering, 1-click cross-account session transfer, and session deletion."""
 
     session_transferred = pyqtSignal()
+    session_deleted = pyqtSignal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.sessions = []
         self._setup_ui()
         self.refresh_sessions()
+
+    def _get_account_info(self, account_uuid: str) -> tuple:
+        """Returns (account_name, avatar_color)."""
+        accounts = config.load_accounts().get("accounts", {})
+        for acc in accounts.values():
+            if acc.get("account_uuid") == account_uuid:
+                return acc.get("name", "Account"), acc.get("avatar_color", "#9ca3af")
+        return "Unknown Account", "#6b7280"
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -127,7 +138,7 @@ class SessionHubWidget(QWidget):
         header_title.setStyleSheet("font-size: 18px; font-weight: 700; color: #ffffff;")
         header_layout.addWidget(header_title)
 
-        header_sub = QLabel("Select specific sessions to copy across accounts for rate-limit continuity.")
+        header_sub = QLabel("Select specific sessions to copy or delete across accounts for rate-limit continuity.")
         header_sub.setStyleSheet("color: #9ca3af; font-size: 13px; margin-left: 8px;")
         header_layout.addWidget(header_sub)
         header_layout.addStretch()
@@ -178,26 +189,37 @@ class SessionHubWidget(QWidget):
         self.transfer_btn.clicked.connect(self._on_transfer_clicked)
         toolbar_layout.addWidget(self.transfer_btn)
 
+        # Delete Selected Button
+        self.delete_btn = QPushButton("Delete Selected (0)")
+        self.delete_btn.setProperty("class", "danger-btn")
+        self.delete_btn.setEnabled(False)
+        self.delete_btn.clicked.connect(self._on_delete_clicked)
+        toolbar_layout.addWidget(self.delete_btn)
+
         layout.addWidget(toolbar_frame)
 
-        # Sessions Table
+        # Sessions Table: 7 columns (Check, Title, Account, Project, Turns, Last Active, Actions)
         self.table = QTableWidget()
-        self.table.setColumnCount(6)
-        self.table.setHorizontalHeaderLabels(["", "Session Title", "Project", "Turns", "Last Active", "Action"])
+        self.table.setColumnCount(7)
+        self.table.setHorizontalHeaderLabels(["", "Session Title", "Account", "Project", "Turns", "Last Active", "Actions"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._show_context_menu)
 
         # Column sizing
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self.table.setColumnWidth(0, 36)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(2, 140)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
-        self.table.setColumnWidth(5, 110)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(6, 175)
 
         layout.addWidget(self.table)
 
@@ -240,26 +262,49 @@ class SessionHubWidget(QWidget):
             # Title
             title_item = QTableWidgetItem(sess["title"])
             title_item.setData(Qt.ItemDataRole.UserRole, sess)
+            title_item.setToolTip(f"{sess['title']}\nSession ID: {sess['session_id']}")
             self.table.setItem(row, 1, title_item)
+
+            # Account with colored bullet
+            acc_name, acc_color = self._get_account_info(sess.get("account_uuid"))
+            acc_item = QTableWidgetItem(f"●  {acc_name}")
+            acc_item.setForeground(QColor(acc_color))
+            acc_item.setToolTip(f"Account: {acc_name}\nUUID: {sess.get('account_uuid')}")
+            self.table.setItem(row, 2, acc_item)
 
             # Project
             proj_item = QTableWidgetItem(sess["project_name"])
-            self.table.setItem(row, 2, proj_item)
+            proj_item.setToolTip(sess.get("cwd", ""))
+            self.table.setItem(row, 3, proj_item)
 
             # Turns
             turns_item = QTableWidgetItem(f"{sess['turns']} turns")
             turns_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.table.setItem(row, 3, turns_item)
+            self.table.setItem(row, 4, turns_item)
 
             # Last Active
             date_item = QTableWidgetItem(sess["last_activity_str"])
-            self.table.setItem(row, 4, date_item)
+            self.table.setItem(row, 5, date_item)
 
-            # Quick Transfer Button
-            quick_btn = QPushButton("Transfer →")
-            quick_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            quick_btn.clicked.connect(lambda _, s=sess: self._quick_transfer_single(s))
-            self.table.setCellWidget(row, 5, quick_btn)
+            # Actions Container (Transfer + Delete)
+            actions_widget = QWidget()
+            actions_layout = QHBoxLayout(actions_widget)
+            actions_layout.setContentsMargins(4, 4, 4, 4)
+            actions_layout.setSpacing(6)
+
+            quick_transfer_btn = QPushButton("Transfer →")
+            quick_transfer_btn.setProperty("class", "table-btn")
+            quick_transfer_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            quick_transfer_btn.clicked.connect(lambda _, s=sess: self._quick_transfer_single(s))
+            actions_layout.addWidget(quick_transfer_btn)
+
+            quick_del_btn = QPushButton("Delete")
+            quick_del_btn.setProperty("class", "table-danger-btn")
+            quick_del_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            quick_del_btn.clicked.connect(lambda _, s=sess: self._delete_single(s))
+            actions_layout.addWidget(quick_del_btn)
+
+            self.table.setCellWidget(row, 6, actions_widget)
 
         self._on_selection_changed()
 
@@ -295,6 +340,8 @@ class SessionHubWidget(QWidget):
         count = len(self._get_selected_sessions())
         self.transfer_btn.setText(f"Transfer Selected ({count})")
         self.transfer_btn.setEnabled(count > 0)
+        self.delete_btn.setText(f"Delete Selected ({count})")
+        self.delete_btn.setEnabled(count > 0)
 
     def _select_all(self):
         for row in range(self.table.rowCount()):
@@ -316,6 +363,83 @@ class SessionHubWidget(QWidget):
         if not selected:
             return
         self._execute_transfer_dialog(selected)
+
+    def _delete_single(self, session: dict):
+        acc_name, _ = self._get_account_info(session.get("account_uuid"))
+        reply = QMessageBox.question(
+            self,
+            "Delete Session",
+            f"Are you sure you want to permanently delete this session?\n\n"
+            f"Title: {session.get('title')}\n"
+            f"Account: {acc_name}\n"
+            f"Project: {session.get('project_name')}\n\n"
+            "This will remove the session JSON file from Claude Desktop.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            success = session_manager.delete_session(session)
+            if success:
+                self.refresh_sessions()
+                self.session_deleted.emit(1)
+            else:
+                QMessageBox.critical(self, "Delete Failed", "Could not delete the session file.")
+
+    def _on_delete_clicked(self):
+        selected = self._get_selected_sessions()
+        if not selected:
+            return
+        count = len(selected)
+        reply = QMessageBox.question(
+            self,
+            "Delete Selected Sessions",
+            f"Are you sure you want to permanently delete {count} selected session(s)?\n\n"
+            "This will remove the session JSON file(s) from Claude Desktop.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            res = session_manager.delete_sessions(selected)
+            deleted = res.get("deleted_count", 0)
+            if deleted > 0:
+                self.refresh_sessions()
+                self.session_deleted.emit(deleted)
+            if res.get("errors"):
+                errs = "\n".join(res["errors"])
+                QMessageBox.warning(self, "Delete Warnings", f"Some sessions could not be deleted:\n{errs}")
+
+    def _show_context_menu(self, pos):
+        item = self.table.itemAt(pos)
+        if not item:
+            return
+        row = item.row()
+        title_item = self.table.item(row, 1)
+        if not title_item:
+            return
+        sess = title_item.data(Qt.ItemDataRole.UserRole)
+        if not sess:
+            return
+
+        menu = QMenu(self)
+        transfer_act = menu.addAction("Transfer Session...")
+        delete_act = menu.addAction("Delete Session")
+        menu.addSeparator()
+        explorer_act = menu.addAction("Show in File Explorer")
+
+        chosen = menu.exec(self.table.viewport().mapToGlobal(pos))
+        if chosen == transfer_act:
+            self._quick_transfer_single(sess)
+        elif chosen == delete_act:
+            self._delete_single(sess)
+        elif chosen == explorer_act:
+            self._open_in_explorer(sess)
+
+    def _open_in_explorer(self, sess: dict):
+        fp = sess.get("file_path")
+        if fp and os.path.exists(fp):
+            subprocess.Popen(f'explorer /select,"{os.path.normpath(fp)}"')
+        else:
+            QMessageBox.warning(self, "File Not Found", "The session file does not exist on disk.")
 
     def _execute_transfer_dialog(self, sessions_to_transfer: list):
         accounts_data = config.load_accounts()
@@ -367,3 +491,4 @@ class SessionHubWidget(QWidget):
             else:
                 errs = "\n".join(res["errors"])
                 QMessageBox.critical(self, "Transfer Failed", f"Could not transfer sessions:\n{errs}")
+

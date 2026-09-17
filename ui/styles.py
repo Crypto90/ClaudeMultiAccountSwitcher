@@ -131,6 +131,29 @@ QPushButton.danger-btn:hover {
     border-color: #ef4444;
 }
 
+QPushButton.table-btn {
+    padding: 4px 10px;
+    font-size: 11px;
+    border-radius: 6px;
+    font-weight: 600;
+}
+
+QPushButton.table-danger-btn {
+    padding: 4px 10px;
+    font-size: 11px;
+    border-radius: 6px;
+    font-weight: 600;
+    background-color: #3b1818;
+    color: #fca5a5;
+    border: 1px solid #7f1d1d;
+}
+
+QPushButton.table-danger-btn:hover {
+    background-color: #7f1d1d;
+    color: #ffffff;
+    border-color: #ef4444;
+}
+
 /* Inputs & Combos */
 QLineEdit, QComboBox, QSpinBox {
     background-color: #161920;

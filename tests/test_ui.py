@@ -23,9 +23,12 @@ class TestUI(unittest.TestCase):
         from ui.session_hub import SessionHubWidget
         hub = SessionHubWidget()
         self.assertIsNotNone(hub.table)
-        self.assertEqual(hub.table.columnCount(), 6)
+        self.assertEqual(hub.table.columnCount(), 7)
         self.assertIsNotNone(hub.search_input)
         self.assertIsNotNone(hub.transfer_btn)
+        self.assertIsNotNone(hub.delete_btn)
+        self.assertFalse(hub.transfer_btn.isEnabled())
+        self.assertFalse(hub.delete_btn.isEnabled())
 
     def test_account_card_creation(self):
         from ui.account_card import AccountCard

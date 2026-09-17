@@ -242,8 +242,10 @@ class MainWindow(QMainWindow):
         self._setup_accounts_tab()
         self.tabs.addTab(self.accounts_tab, "Accounts")
 
-        # Tab 2: Session Hub (Selective Transfer)
+        # Tab 2: Session Hub (Selective Transfer & Management)
         self.session_hub = SessionHubWidget()
+        self.session_hub.session_transferred.connect(self._on_session_hub_transferred)
+        self.session_hub.session_deleted.connect(self._on_session_hub_deleted)
         self.tabs.addTab(self.session_hub, "Session Hub (Rate Limits)")
 
         # Tab 3: Settings
@@ -251,12 +253,24 @@ class MainWindow(QMainWindow):
         self._setup_settings_tab()
         self.tabs.addTab(self.settings_tab, "Settings")
 
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+
         main_layout.addWidget(self.tabs)
 
         # Bottom Feedback Bar
         self.feedback_label = QLabel("Ready. Your active session is securely backed up.")
         self.feedback_label.setStyleSheet("color: #9ca3af; font-size: 12px; padding: 4px;")
         main_layout.addWidget(self.feedback_label)
+
+    def _on_tab_changed(self, index: int):
+        if index == 1:
+            self.session_hub.refresh_sessions()
+
+    def _on_session_hub_transferred(self):
+        self.feedback_label.setText("Sessions successfully transferred. Switch accounts to resume.")
+
+    def _on_session_hub_deleted(self, count: int):
+        self.feedback_label.setText(f"Successfully deleted {count} session(s) from Claude Desktop.")
 
     def _setup_accounts_tab(self):
         layout = QVBoxLayout(self.accounts_tab)

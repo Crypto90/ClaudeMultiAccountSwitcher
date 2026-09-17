@@ -131,6 +131,74 @@ class TestCoreModules(unittest.TestCase):
         acc_a_sessions = SessionManager.get_sessions_for_account(acc_a, claude_dir=self.mock_claude_dir)
         self.assertEqual(len(acc_a_sessions), 3)
 
+    def test_delete_session(self):
+        """Verify deleting a single session removes the JSON file and cleans empty directory."""
+        acc_uuid = "uuid_del_test"
+        org_id = "org_del_test"
+        sess_dir = self.mock_claude_dir / "claude-code-sessions" / acc_uuid / org_id
+        sess_dir.mkdir(parents=True, exist_ok=True)
+
+        session_data = {
+            "sessionId": "local_del_1",
+            "title": "Unwanted Duplicate Session",
+            "cwd": "C:/Projects/DupProject"
+        }
+        file_path = sess_dir / "local_del_1.json"
+        file_path.write_text(json.dumps(session_data), encoding="utf-8")
+
+        self.assertTrue(file_path.exists())
+
+        # Delete session
+        sess_dict = {
+            "session_id": "local_del_1",
+            "account_uuid": acc_uuid,
+            "title": "Unwanted Duplicate Session",
+            "file_path": str(file_path)
+        }
+        success = SessionManager.delete_session(sess_dict, claude_dir=self.mock_claude_dir)
+        self.assertTrue(success)
+        self.assertFalse(file_path.exists())
+        # Empty org directory should be cleaned up
+        self.assertFalse(sess_dir.exists())
+
+    def test_delete_sessions_batch(self):
+        """Verify batch session deletion removes all specified session files."""
+        acc_uuid = "uuid_batch_del"
+        org_id = "org_batch_del"
+        sess_dir = self.mock_claude_dir / "claude-code-sessions" / acc_uuid / org_id
+        sess_dir.mkdir(parents=True, exist_ok=True)
+
+        f1 = sess_dir / "local_b1.json"
+        f2 = sess_dir / "local_b2.json"
+        f1.write_text(json.dumps({"title": "Session B1"}), encoding="utf-8")
+        f2.write_text(json.dumps({"title": "Session B2"}), encoding="utf-8")
+
+        sessions_to_del = [
+            {"title": "Session B1", "file_path": str(f1)},
+            {"title": "Session B2", "file_path": str(f2)}
+        ]
+        res = SessionManager.delete_sessions(sessions_to_del, claude_dir=self.mock_claude_dir)
+        self.assertEqual(res["deleted_count"], 2)
+        self.assertEqual(len(res["errors"]), 0)
+        self.assertFalse(f1.exists())
+        self.assertFalse(f2.exists())
+
+    def test_delete_session_security_check(self):
+        """Verify security checks refuse to delete non-session files or files outside claude-code-sessions."""
+        # Create config.json outside sessions directory
+        config_path = self.mock_claude_dir / "config.json"
+        config_path.write_text('{"test": true}', encoding="utf-8")
+        self.assertTrue(config_path.exists())
+
+        unsafe_sess = {
+            "title": "Unsafe Hack",
+            "file_path": str(config_path)
+        }
+        success = SessionManager.delete_session(unsafe_sess, claude_dir=self.mock_claude_dir)
+        self.assertFalse(success)
+        self.assertTrue(config_path.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
+

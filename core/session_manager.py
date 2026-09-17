@@ -170,5 +170,76 @@ class SessionManager:
 
         return result
 
+    @classmethod
+    def delete_session(cls, session: Dict[str, Any], claude_dir: Optional[Path] = None) -> bool:
+        """
+        Delete a session file from disk.
+        Safely verifies the file is inside claude-code-sessions to prevent accidental deletions.
+        """
+        file_path = session.get("file_path")
+        base_dir = (claude_dir or config.get_claude_profile_dir()).resolve()
+        sessions_root = (base_dir / "claude-code-sessions").resolve()
+
+        if not file_path and "session_id" in session and "account_uuid" in session:
+            # Fallback lookup
+            for s in cls.get_sessions_for_account(session["account_uuid"], claude_dir):
+                if s["session_id"] == session["session_id"]:
+                    file_path = s["file_path"]
+                    break
+
+        if not file_path:
+            logger.error("No file_path provided or found for session deletion.")
+            return False
+
+        path = Path(file_path).resolve()
+
+        # Security check: ensure path is inside sessions_root and is a valid session JSON file
+        try:
+            path.relative_to(sessions_root)
+        except ValueError:
+            logger.error(f"Refusing to delete file outside claude-code-sessions: {path}")
+            return False
+
+        if not path.is_file() or not path.name.startswith("local_") or path.suffix != ".json":
+            logger.error(f"Refusing to delete non-session file: {path}")
+            return False
+
+        try:
+            path.unlink(missing_ok=True)
+            logger.info(f"Deleted session file: {path}")
+
+            # Check if parent org dir is now empty; if so, remove it cleanly
+            parent_dir = path.parent
+            if parent_dir.exists() and not any(parent_dir.iterdir()):
+                try:
+                    parent_dir.rmdir()
+                    logger.debug(f"Removed empty org directory: {parent_dir}")
+                except Exception:
+                    pass
+
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete session file {path}: {e}")
+            return False
+
+    @classmethod
+    def delete_sessions(cls, sessions: List[Dict[str, Any]], claude_dir: Optional[Path] = None) -> Dict[str, Any]:
+        """
+        Batch delete a list of sessions.
+        Returns dict with 'deleted_count' and 'errors'.
+        """
+        result = {
+            "deleted_count": 0,
+            "errors": []
+        }
+        for sess in sessions:
+            title = sess.get("title", "Untitled")
+            success = cls.delete_session(sess, claude_dir)
+            if success:
+                result["deleted_count"] += 1
+            else:
+                result["errors"].append(f"Failed to delete '{title}'")
+        return result
+
 
 session_manager = SessionManager()
