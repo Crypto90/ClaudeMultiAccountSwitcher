@@ -37,6 +37,7 @@ class AccountCard(QFrame):
     """Card widget representing a single Claude account profile."""
 
     switch_requested = pyqtSignal(str)     # account_id
+    edit_requested = pyqtSignal(str)       # account_id
     rename_requested = pyqtSignal(str)     # account_id
     delete_requested = pyqtSignal(str)     # account_id
     shortcut_requested = pyqtSignal(str)   # account_id
@@ -121,6 +122,14 @@ class AccountCard(QFrame):
             )
             actions_layout.addWidget(current_pill)
 
+        # Edit Profile Button
+        edit_btn = QPushButton("Edit")
+        edit_btn.setFixedWidth(56)
+        edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        edit_btn.setToolTip("Edit account name, avatar color, or remove profile")
+        edit_btn.clicked.connect(lambda: self.edit_requested.emit(self.account_id))
+        actions_layout.addWidget(edit_btn)
+
         # More Actions Menu button
         menu_btn = QPushButton("•••")
         menu_btn.setFixedWidth(38)
@@ -138,17 +147,17 @@ class AccountCard(QFrame):
             "QMenu::item:selected { background-color: #2d3343; color: #f59e0b; }"
         )
 
-        rename_action = menu.addAction("Rename Account")
+        edit_action = menu.addAction("Edit Profile (Name & Color)")
         shortcut_action = menu.addAction("Create Desktop Shortcut")
         menu.addSeparator()
 
-        delete_action = menu.addAction("Delete Account Profile")
-        if self.is_active or self.account_data.get("is_primary"):
+        delete_action = menu.addAction("Remove Account Profile")
+        if self.is_active:
             delete_action.setEnabled(False)
 
         action = menu.exec(self.mapToGlobal(self.rect().bottomRight()))
-        if action == rename_action:
-            self.rename_requested.emit(self.account_id)
+        if action == edit_action:
+            self.edit_requested.emit(self.account_id)
         elif action == shortcut_action:
             self.shortcut_requested.emit(self.account_id)
         elif action == delete_action:

@@ -49,6 +49,28 @@ class TestUI(unittest.TestCase):
         self.assertIsNotNone(dialog.name_input)
         self.assertIsNotNone(dialog.mcp_checkbox)
 
+    def test_edit_dialog_creation(self):
+        from ui.edit_dialog import EditAccountDialog
+        mock_data = {
+            "id": "acc_edit",
+            "name": "Original Name",
+            "avatar_color": "#d97706",
+            "account_uuid": "12345678-abcd-1234-abcd-1234567890ab"
+        }
+        dialog = EditAccountDialog(mock_data, is_active=False)
+        self.assertEqual(dialog.name_input.text(), "Original Name")
+        self.assertTrue(dialog.delete_btn.isEnabled())
+
+        active_dialog = EditAccountDialog(mock_data, is_active=True)
+        self.assertFalse(active_dialog.delete_btn.isEnabled())
+
+    def test_worker_instantiation(self):
+        from ui.worker import SwitchAccountWorker, RestartClaudeWorker
+        w1 = SwitchAccountWorker("acc_test")
+        self.assertIsNotNone(w1)
+        w2 = RestartClaudeWorker()
+        self.assertIsNotNone(w2)
+
 
 if __name__ == "__main__":
     unittest.main()

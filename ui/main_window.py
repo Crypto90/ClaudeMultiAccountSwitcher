@@ -18,8 +18,10 @@ from core.session_manager import session_manager
 from ui.account_card import AccountCard
 from ui.session_hub import SessionHubWidget
 from ui.add_dialog import AddAccountDialog
+from ui.edit_dialog import EditAccountDialog
 from ui.backup_dialog import BackupDialog
 from ui.tray_icon import ClaudeTrayIcon, create_tray_pixmap
+from ui.worker import SwitchAccountWorker, RestartClaudeWorker, CreateAccountWorker
 
 
 class SwitchPromptDialog(QDialog):
@@ -213,6 +215,7 @@ class MainWindow(QMainWindow):
             is_active = (acc_id == active_id)
             card = AccountCard(acc_info, is_active=is_active)
             card.switch_requested.connect(self._handle_switch_account)
+            card.edit_requested.connect(self._handle_edit_account)
             card.rename_requested.connect(self._handle_rename_account)
             card.delete_requested.connect(self._handle_delete_account)
             card.shortcut_requested.connect(self._handle_create_shortcut)
@@ -318,37 +321,53 @@ class MainWindow(QMainWindow):
                     else:
                         return  # User canceled switch
 
-        self.feedback_label.setText(f"Switching to {target_acc.get('name')}...")
+        # Asynchronous non-blocking switch execution
+        self.feedback_label.setText(f"Switching to {target_acc.get('name')} (closing Claude Desktop safely)...")
         self.setCursor(QCursor(Qt.CursorShape.WaitCursor))
 
-        try:
-            profile_manager.switch_account(target_account_id, carry_over_session_ids=carry_over_ids)
-            self.feedback_label.setText(f"Active account is now: {target_acc.get('name')}")
-            self.refresh_accounts_list()
-            self.session_hub.refresh_sessions()
-            self.tray_icon.showMessage(
-                "Account Switched",
-                f"Now active: {target_acc.get('name')}. Claude Desktop is ready.",
-                QIcon(create_tray_pixmap())
-            )
-        except Exception as e:
-            QMessageBox.critical(self, "Switch Error", f"Could not switch account:\n{e}")
-            self.feedback_label.setText("Switch failed.")
-        finally:
+        self._switch_worker = SwitchAccountWorker(target_account_id, carry_over_ids, parent=self)
+        self._switch_worker.status_changed.connect(lambda msg: self.feedback_label.setText(msg))
+
+        def on_switch_done(success: bool, msg: str):
             self.unsetCursor()
+            if success:
+                self.feedback_label.setText(f"Active account is now: {target_acc.get('name')}")
+                self.refresh_accounts_list()
+                self.session_hub.refresh_sessions()
+                self.tray_icon.showMessage(
+                    "Account Switched",
+                    f"Now active: {target_acc.get('name')}. Claude Desktop is ready.",
+                    QIcon(create_tray_pixmap())
+                )
+            else:
+                QMessageBox.critical(self, "Switch Error", f"Could not switch account:\n{msg}")
+                self.feedback_label.setText("Switch failed.")
+
+        self._switch_worker.finished.connect(on_switch_done)
+        self._switch_worker.start()
 
     def _open_add_dialog(self):
         dialog = AddAccountDialog(self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             acc_name, avatar_color, share_mcp = dialog.get_account_data()
-            try:
-                new_id = profile_manager.create_new_account_setup(acc_name, avatar_color, share_mcp)
-                self.feedback_label.setText(f"Opened Claude in sign-in mode for '{acc_name}'. Please log in.")
-                self.refresh_accounts_list()
-                # Start watcher
-                self.pending_watcher.start(3000)
-            except Exception as e:
-                QMessageBox.critical(self, "Setup Error", f"Could not initialize account setup:\n{e}")
+            self.feedback_label.setText(f"Preparing setup for '{acc_name}'...")
+            self.setCursor(QCursor(Qt.CursorShape.WaitCursor))
+
+            self._create_worker = CreateAccountWorker(acc_name, avatar_color, share_mcp, parent=self)
+            self._create_worker.status_changed.connect(lambda msg: self.feedback_label.setText(msg))
+
+            def on_create_done(success: bool, new_id: str, msg: str):
+                self.unsetCursor()
+                if success:
+                    self.feedback_label.setText(f"Opened Claude in sign-in mode for '{acc_name}'. Please log in.")
+                    self.refresh_accounts_list()
+                    self.pending_watcher.start(3000)
+                else:
+                    QMessageBox.critical(self, "Setup Error", f"Could not initialize account setup:\n{msg}")
+                    self.feedback_label.setText("Setup failed.")
+
+            self._create_worker.finished.connect(on_create_done)
+            self._create_worker.start()
 
     def _check_pending_logins(self):
         """Detect when the user finishes signing in to their new account."""
@@ -389,22 +408,39 @@ class MainWindow(QMainWindow):
 
     def _on_restart_claude(self):
         self.feedback_label.setText("Restarting Claude Desktop...")
-        process_manager.restart_claude()
-        self.feedback_label.setText("Claude Desktop restarted.")
+        self.setCursor(QCursor(Qt.CursorShape.WaitCursor))
 
-    def _handle_rename_account(self, account_id: str):
+        self._restart_worker = RestartClaudeWorker(parent=self)
+        self._restart_worker.status_changed.connect(lambda msg: self.feedback_label.setText(msg))
+
+        def on_restart_done(success: bool, msg: str):
+            self.unsetCursor()
+            self.feedback_label.setText("Claude Desktop restarted.")
+
+        self._restart_worker.finished.connect(on_restart_done)
+        self._restart_worker.start()
+
+    def _handle_edit_account(self, account_id: str):
+        """Open full Edit dialog to change name, avatar color, or remove profile."""
         accounts = config.load_accounts()
         acc = accounts.get("accounts", {}).get(account_id)
         if not acc:
             return
 
-        new_name, ok = QInputDialog.getText(
-            self, "Rename Account", "Enter new account name:", text=acc.get("name")
-        )
-        if ok and new_name.strip():
-            acc["name"] = new_name.strip()
+        active_id = accounts.get("active_account_id")
+        dlg = EditAccountDialog(acc, is_active=(account_id == active_id), parent=self)
+        dlg.account_deleted.connect(self._handle_delete_account)
+
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            new_name, new_color = dlg.get_updated_data()
+            acc["name"] = new_name
+            acc["avatar_color"] = new_color
             config.save_accounts(accounts)
             self.refresh_accounts_list()
+            self.feedback_label.setText(f"Profile '{new_name}' updated.")
+
+    def _handle_rename_account(self, account_id: str):
+        self._handle_edit_account(account_id)
 
     def _handle_delete_account(self, account_id: str):
         accounts = config.load_accounts()
@@ -412,10 +448,20 @@ class MainWindow(QMainWindow):
         if not acc:
             return
 
+        active_id = accounts.get("active_account_id")
+        if account_id == active_id:
+            QMessageBox.warning(
+                self, "Active Account",
+                f"Cannot remove '{acc.get('name')}' because it is currently the active account.\n"
+                "Please switch to another account before removing this one."
+            )
+            return
+
         confirm = QMessageBox.question(
-            self, "Delete Account",
-            f"Are you sure you want to remove profile '{acc.get('name')}'?\n"
-            "This will remove the local profile folder.",
+            self, "Confirm Account Removal",
+            f"Are you sure you want to remove profile '{acc.get('name')}' from Claude Switcher?\n\n"
+            "This will delete its saved profile files.\n"
+            "(Your initial baseline backup is permanently preserved).",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if confirm == QMessageBox.StandardButton.Yes:
@@ -426,6 +472,8 @@ class MainWindow(QMainWindow):
                 shutil.rmtree(profile_dir, ignore_errors=True)
             del accounts["accounts"][account_id]
             config.save_accounts(accounts)
+            self.refresh_accounts_list()
+            self.feedback_label.setText(f"Removed profile '{acc.get('name')}'.")
             self.refresh_accounts_list()
 
     def _handle_create_shortcut(self, account_id: str):
