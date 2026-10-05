@@ -26,10 +26,45 @@ class ProfileManager:
         self.process_manager = process_manager
         self.session_manager = session_manager
 
+    @staticmethod
+    def _copy_file_with_retry(src: Path, dest: Path, retries: int = 4, delay: float = 0.25) -> bool:
+        """Copy a file, retrying if temporarily locked by another process."""
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        for attempt in range(retries):
+            try:
+                shutil.copy2(src, dest)
+                return True
+            except (PermissionError, OSError) as e:
+                if attempt < retries - 1:
+                    time.sleep(delay)
+                else:
+                    logger.warning(f"Failed to copy {src.name} after {retries} attempts: {e}")
+                    return False
+        return False
+
+    def _copy_dir_safely(self, src: Path, dest: Path) -> int:
+        """Safely copy a directory hierarchy without destroying target if locked."""
+        dest.mkdir(parents=True, exist_ok=True)
+        copied = 0
+        for root, dirs, files in os.walk(str(src)):
+            rel_path = Path(root).relative_to(src)
+            dirs[:] = [d for d in dirs if d not in EXCLUDED_PROFILE_ITEMS]
+            dest_subdir = dest / rel_path
+            dest_subdir.mkdir(parents=True, exist_ok=True)
+            for f in files:
+                if f in EXCLUDED_PROFILE_ITEMS:
+                    continue
+                s_file = Path(root) / f
+                d_file = dest_subdir / f
+                if self._copy_file_with_retry(s_file, d_file):
+                    copied += 1
+        return copied
+
     def copy_session_payload(self, src_dir: Path, dest_dir: Path) -> int:
         """
         Copy only auth and session-critical files (~10-15 MB).
         Explicitly skips multi-gigabyte VM bundles, binaries, and heavy caches.
+        Never prematurely deletes existing destination directories, and validates critical auth items.
         """
         dest_dir.mkdir(parents=True, exist_ok=True)
         copied_count = 0
@@ -41,14 +76,20 @@ class ProfileManager:
             dest_item = dest_dir / item.name
             try:
                 if item.is_dir():
-                    if dest_item.exists():
-                        shutil.rmtree(dest_item)
-                    shutil.copytree(item, dest_item, ignore=shutil.ignore_patterns(*EXCLUDED_PROFILE_ITEMS))
+                    self._copy_dir_safely(item, dest_item)
                 else:
-                    shutil.copy2(item, dest_item)
+                    self._copy_file_with_retry(item, dest_item)
                 copied_count += 1
             except Exception as e:
                 logger.warning(f"Error copying {item.name}: {e}")
+
+        # Safety validation: if src_dir had Network/Cookies, ensure dest_dir has it too!
+        src_cookies = src_dir / "Network" / "Cookies"
+        dest_cookies = dest_dir / "Network" / "Cookies"
+        if src_cookies.exists() and src_cookies.stat().st_size > 0:
+            if not dest_cookies.exists() or dest_cookies.stat().st_size == 0:
+                logger.warning("Network/Cookies missing after initial copy, attempting rescue copy...")
+                self._copy_file_with_retry(src_cookies, dest_cookies, retries=5, delay=0.3)
 
         return copied_count
 
@@ -127,15 +168,16 @@ class ProfileManager:
 
         # CRITICAL SAFETY CHECK:
         # Never overwrite an existing signed-in profile with a logged-out or unauthenticated session!
-        if not session_info.get("is_signed_in") and not session_info.get("has_tokens"):
-            if target_acc.get("account_uuid"):
+        if not session_info.get("is_signed_in"):
+            if target_acc.get("account_uuid") and not target_acc.get("is_pending_login"):
                 logger.warning(
-                    f"Refusing to overwrite signed-in profile '{target_acc.get('name')}' with unauthenticated session."
+                    f"Refusing to overwrite signed-in profile '{target_acc.get('name')}' with unauthenticated or cookie-less session."
                 )
                 return False
 
         # Ensure Claude Desktop is closed to release SQLite Cookies and LevelDB locks
-        if self.detector.is_claude_running():
+        was_running = self.detector.is_claude_running()
+        if was_running:
             self.process_manager.close_claude()
             time.sleep(0.5)
 
@@ -152,6 +194,10 @@ class ProfileManager:
             acc["org_uuids"] = session_info["org_uuids"]
 
         self.config.save_accounts(accounts)
+
+        if was_running:
+            self.process_manager.launch_claude()
+
         return True
 
     def switch_account(
@@ -179,6 +225,25 @@ class ProfileManager:
 
         if not target_profile_dir.exists():
             raise FileNotFoundError(f"Target profile directory missing: {target_profile_dir}")
+
+        # Step 0: Pre-flight validation of target profile
+        target_cookies = target_profile_dir / "Network" / "Cookies"
+        if not target_cookies.exists() or target_cookies.stat().st_size == 0:
+            rolling_backup_cookies = self.config.backups_dir / f"backup_{target_account_id}" / "Network" / "Cookies"
+            init_cookies = self.config.initial_backup_dir / "Network" / "Cookies"
+            backup_source = None
+            if rolling_backup_cookies.exists() and rolling_backup_cookies.stat().st_size > 0:
+                backup_source = rolling_backup_cookies
+            elif target_account_id == "account_primary" and init_cookies.exists() and init_cookies.stat().st_size > 0:
+                backup_source = init_cookies
+
+            if backup_source:
+                logger.info(f"Auto-healing profile '{target_account_id}': restoring Network/Cookies from {backup_source.parent}...")
+                target_cookies.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(backup_source, target_cookies)
+                journal_src = backup_source.parent / "Cookies-journal"
+                if journal_src.exists():
+                    shutil.copy2(journal_src, target_cookies.parent / "Cookies-journal")
 
         was_running = self.detector.is_claude_running()
 
@@ -210,12 +275,18 @@ class ProfileManager:
                 status_callback("Saving current profile snapshot...")
             session_info = self.detector.get_active_session_info(claude_dir)
             source_acc = accounts["accounts"][source_acc_id]
-            if session_info.get("is_signed_in") and session_info.get("has_tokens"):
+            if session_info.get("is_signed_in"):
                 src_profile_dir = self.config.profiles_dir / source_acc_id
                 self.copy_session_payload(claude_dir, src_profile_dir)
                 source_acc["last_active"] = datetime.now().isoformat()
                 if session_info.get("account_uuid"):
                     source_acc["account_uuid"] = session_info["account_uuid"]
+
+                # Rolling backup of last good session state
+                settings = self.config.load_settings()
+                if settings.get("auto_backup_on_switch", True):
+                    rolling_backup = self.config.backups_dir / f"backup_{source_acc_id}"
+                    self.copy_session_payload(src_profile_dir, rolling_backup)
             else:
                 logger.info(f"Skipping save of '{source_acc.get('name')}' as active session is not authenticated.")
 
@@ -239,6 +310,13 @@ class ProfileManager:
 
         # Step 5: Copy target account files into active Claude directory
         self.copy_session_payload(target_profile_dir, claude_dir)
+
+        # Verification of active Cookies post-switch
+        target_cookies = target_profile_dir / "Network" / "Cookies"
+        active_cookies = claude_dir / "Network" / "Cookies"
+        if target_cookies.exists() and (not active_cookies.exists() or active_cookies.stat().st_size == 0):
+            logger.warning("Active Network/Cookies missing after switch; forcing direct copy.")
+            self._copy_file_with_retry(target_cookies, active_cookies, retries=5)
 
         # Step 6: Update registry
         accounts["active_account_id"] = target_account_id

@@ -27,7 +27,9 @@ EXCLUDED_PROFILE_ITEMS = {
     "blob_storage",
     # Persistent session databases (namespaced by account UUID; preserved in-place across switches)
     "claude-code-sessions",
-    "local-agent-mode-sessions"
+    "local-agent-mode-sessions",
+    # Shared browser extension native messaging host daemon
+    "ChromeNativeHost"
 }
 
 # Core session items that MUST be preserved for authentication and session continuity

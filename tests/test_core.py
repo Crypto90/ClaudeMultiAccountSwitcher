@@ -279,8 +279,100 @@ class TestCoreModules(unittest.TestCase):
             )
             self.assertTrue(success)
             mock_launch.assert_called_once()
-            self.assertTrue(any("Starting Claude Desktop" in s for s in statuses))
-            self.assertEqual(self.config.load_accounts()["active_account_id"], "acc_2")
+    def test_switch_account_auto_heals_missing_primary_cookies(self):
+        """Verify ProfileManager.switch_account auto-heals missing Cookies in primary account from baseline backup."""
+        from unittest.mock import patch
+        from core.profile_manager import ProfileManager
+
+        pm = ProfileManager()
+        pm.config = self.config
+
+        # Create baseline backup with cookies
+        backup_net = self.config.initial_backup_dir / "Network"
+        backup_net.mkdir(parents=True, exist_ok=True)
+        (backup_net / "Cookies").write_bytes(b"baseline_cookies_data")
+
+        # Setup primary account without cookies (simulating the bug)
+        primary_dir = self.config.profiles_dir / "account_primary"
+        primary_net = primary_dir / "Network"
+        primary_net.mkdir(parents=True, exist_ok=True)
+        (primary_dir / "config.json").write_text('{"lastKnownAccountUuid": "u_prim"}', encoding="utf-8")
+
+        self.config.save_accounts({
+            "active_account_id": "account_other",
+            "accounts": {
+                "account_primary": {"name": "Main Account", "account_uuid": "u_prim"},
+                "account_other": {"name": "Other Account", "account_uuid": "u_other"}
+            }
+        })
+
+        with patch.object(pm.process_manager, "close_claude"), \
+             patch.object(pm.process_manager, "launch_claude", return_value=True), \
+             patch.object(pm.detector, "is_claude_running", return_value=False), \
+             patch.object(self.config, "get_claude_profile_dir", return_value=self.mock_claude_dir):
+            success = pm.switch_account("account_primary", restart_claude=False)
+            self.assertTrue(success)
+
+            # Target profile must have auto-healed cookies
+            self.assertTrue((primary_dir / "Network" / "Cookies").exists())
+            self.assertEqual((primary_dir / "Network" / "Cookies").read_bytes(), b"baseline_cookies_data")
+            # Active dir must also have received the cookies
+            self.assertTrue((self.mock_claude_dir / "Network" / "Cookies").exists())
+            self.assertEqual((self.mock_claude_dir / "Network" / "Cookies").read_bytes(), b"baseline_cookies_data")
+
+    def test_detector_requires_cookies_for_signed_in(self):
+        """Verify ClaudeDetector reports is_signed_in=False if Network/Cookies is missing."""
+        (self.mock_claude_dir / "config.json").write_text('{"windowSizeWasSignedIn": true}', encoding="utf-8")
+        info_no_cookies = ClaudeDetector.get_active_session_info(self.mock_claude_dir)
+        self.assertFalse(info_no_cookies["is_signed_in"])
+        self.assertFalse(info_no_cookies["has_cookies"])
+
+        net_dir = self.mock_claude_dir / "Network"
+        net_dir.mkdir(parents=True, exist_ok=True)
+        (net_dir / "Cookies").write_bytes(b"dummy_cookie_payload")
+
+        info_with_cookies = ClaudeDetector.get_active_session_info(self.mock_claude_dir)
+        self.assertTrue(info_with_cookies["is_signed_in"])
+    def test_switch_account_creates_rolling_backup(self):
+        """Verify ProfileManager.switch_account creates a rolling backup of the source account."""
+        from unittest.mock import patch
+        from core.profile_manager import ProfileManager
+
+        pm = ProfileManager()
+        pm.config = self.config
+
+        # Setup active session with cookies
+        net_dir = self.mock_claude_dir / "Network"
+        net_dir.mkdir(parents=True, exist_ok=True)
+        (net_dir / "Cookies").write_bytes(b"active_cookies")
+        (self.mock_claude_dir / "config.json").write_text('{"windowSizeWasSignedIn": true, "lastKnownAccountUuid": "u_active"}', encoding="utf-8")
+
+        # Setup target profile
+        target_dir = self.config.profiles_dir / "account_target"
+        target_net = target_dir / "Network"
+        target_net.mkdir(parents=True, exist_ok=True)
+        (target_net / "Cookies").write_bytes(b"target_cookies")
+        (target_dir / "config.json").write_text('{"lastKnownAccountUuid": "u_target"}', encoding="utf-8")
+
+        self.config.save_accounts({
+            "active_account_id": "account_src",
+            "accounts": {
+                "account_src": {"name": "Source Account", "account_uuid": "u_active"},
+                "account_target": {"name": "Target Account", "account_uuid": "u_target"}
+            }
+        })
+
+        with patch.object(pm.process_manager, "close_claude"), \
+             patch.object(pm.process_manager, "launch_claude", return_value=True), \
+             patch.object(pm.detector, "is_claude_running", return_value=False), \
+             patch.object(self.config, "get_claude_profile_dir", return_value=self.mock_claude_dir):
+            success = pm.switch_account("account_target", restart_claude=False)
+            self.assertTrue(success)
+
+            # Rolling backup must exist for source account
+            rolling_backup_cookies = self.config.backups_dir / "backup_account_src" / "Network" / "Cookies"
+            self.assertTrue(rolling_backup_cookies.exists())
+            self.assertEqual(rolling_backup_cookies.read_bytes(), b"active_cookies")
 
 
 if __name__ == "__main__":

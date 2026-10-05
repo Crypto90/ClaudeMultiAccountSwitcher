@@ -95,8 +95,11 @@ class ClaudeDetector:
             with open(config_path, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
 
+            cookies_file = target_dir / "Network" / "Cookies"
+            has_cookies = cookies_file.exists() and cookies_file.stat().st_size > 0
+            info["has_cookies"] = has_cookies
             info["account_uuid"] = cfg.get("lastKnownAccountUuid")
-            info["is_signed_in"] = bool(cfg.get("windowSizeWasSignedIn", False))
+            info["is_signed_in"] = bool(cfg.get("windowSizeWasSignedIn", False)) and has_cookies
             info["locale"] = cfg.get("locale", "en-US")
             info["version"] = cfg.get("updaterLastSeenVersion")
             info["has_tokens"] = "oauth:tokenCache" in cfg or "oauth:tokenCacheV2" in cfg
