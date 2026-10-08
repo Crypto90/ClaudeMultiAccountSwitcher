@@ -582,7 +582,7 @@ class MainWindow(QMainWindow):
 
         active_id = accounts.get("active_account_id")
         dlg = EditAccountDialog(acc, is_active=(account_id == active_id), parent=self)
-        dlg.account_deleted.connect(self._handle_delete_account)
+        dlg.account_deleted.connect(lambda a_id: self._handle_delete_account(a_id, confirmed=True))
 
         if dlg.exec() == QDialog.DialogCode.Accepted:
             new_name, new_color = dlg.get_updated_data()
@@ -595,7 +595,7 @@ class MainWindow(QMainWindow):
     def _handle_rename_account(self, account_id: str):
         self._handle_edit_account(account_id)
 
-    def _handle_delete_account(self, account_id: str):
+    def _handle_delete_account(self, account_id: str, confirmed: bool = False):
         accounts = config.load_accounts()
         acc = accounts.get("accounts", {}).get(account_id)
         if not acc:
@@ -610,24 +610,26 @@ class MainWindow(QMainWindow):
             )
             return
 
-        confirm = QMessageBox.question(
-            self, "Confirm Account Removal",
-            f"Are you sure you want to remove profile '{acc.get('name')}' from Claude Switcher?\n\n"
-            "This will delete its saved profile files.\n"
-            "(Your initial baseline backup is permanently preserved).",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        if confirm == QMessageBox.StandardButton.Yes:
-            # Remove profile folder
-            profile_dir = config.profiles_dir / account_id
-            if profile_dir.exists():
-                import shutil
-                shutil.rmtree(profile_dir, ignore_errors=True)
-            del accounts["accounts"][account_id]
-            config.save_accounts(accounts)
-            self.refresh_accounts_list()
-            self.feedback_label.setText(f"Removed profile '{acc.get('name')}'.")
-            self.refresh_accounts_list()
+        if not confirmed:
+            confirm = QMessageBox.question(
+                self, "Confirm Account Removal",
+                f"Are you sure you want to remove profile '{acc.get('name')}' from Claude Switcher?\n\n"
+                "This will delete its saved profile files.\n"
+                "(Your initial baseline backup is permanently preserved).",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if confirm != QMessageBox.StandardButton.Yes:
+                return
+
+        # Remove profile folder
+        profile_dir = config.profiles_dir / account_id
+        if profile_dir.exists():
+            import shutil
+            shutil.rmtree(profile_dir, ignore_errors=True)
+        del accounts["accounts"][account_id]
+        config.save_accounts(accounts)
+        self.refresh_accounts_list()
+        self.feedback_label.setText(f"Removed profile '{acc.get('name')}'.")
 
     def _handle_create_shortcut(self, account_id: str):
         try:

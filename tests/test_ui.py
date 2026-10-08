@@ -64,8 +64,23 @@ class TestUI(unittest.TestCase):
         self.assertEqual(dialog.name_input.text(), "Original Name")
         self.assertTrue(dialog.delete_btn.isEnabled())
 
+        # Test rendering & paintEvent execution
+        dialog.show()
+        dialog.repaint()
+        dialog.avatar_preview.repaint()
+
+        # Test input and color update
+        dialog.name_input.setText("Updated Profile")
+        dialog.repaint()
+        dialog.avatar_preview.repaint()
+        name, color = dialog.get_updated_data()
+        self.assertEqual(name, "Updated Profile")
+        self.assertEqual(color, "#d97706")
+
         active_dialog = EditAccountDialog(mock_data, is_active=True)
         self.assertFalse(active_dialog.delete_btn.isEnabled())
+        active_dialog.show()
+        active_dialog.repaint()
 
     def test_worker_instantiation(self):
         from ui.worker import SwitchAccountWorker, RestartClaudeWorker

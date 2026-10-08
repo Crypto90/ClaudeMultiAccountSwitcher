@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QColorDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QPainter, QBrush, QFont
+from PyQt6.QtGui import QColor, QPainter, QBrush, QPen, QFont
 
 
 COLOR_PRESETS = [
